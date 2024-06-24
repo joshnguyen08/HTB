@@ -16,6 +16,7 @@ gobuster dir -u http://10.129.136.9:8080/ -w /usr/share/wordlists/dirbuster/dire
 
 
 Logging into http://10.129.136.9:8080/manager/html gives us the page below, leading to 403 access denied.
+The webpage shown however leaks the credential of tomcat and s3cret password
 
 
 
