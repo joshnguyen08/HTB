@@ -1,0 +1,99 @@
+#### Telnet
+- Description: Telnet is a network protocol used to provide a command-line interface for communication with a remote device or server.
+- Common Usage:
+  ```
+  telnet 10.129.41.187 23
+  ```
+
+#### FTP
+- Description: FTP (File Transfer Protocol) is used to transfer files between client and server.
+- Common Commands:
+  ```
+  ftp 10.129.41.187
+  ```
+  - Use `anonymous` as the username if anonymous login is allowed.
+
+#### SMB (Server Message Block)
+- Description: SMB is a network file sharing protocol.
+- Common Commands:
+  ```
+  smbclient -L 10.129.41.187
+  smbclient \\\\10.129.41.187\\NameOfWorkShares
+  ```
+
+#### Redis
+- Description: Redis is an in-memory data structure store used as a database, cache, and message broker.
+- Common Commands:
+  ```
+  redis-cli -h 10.129.41.187
+  select 0
+  keys *
+  get keyName
+  ```
+
+#### RDP (Remote Desktop Protocol)
+- Description: RDP is a protocol developed by Microsoft to allow users to connect to another computer over a network connection.
+- Common Commands:
+  ```
+  xfreerdp /v:10.129.1.13 /cert-ignore /u:Administrator
+  ```
+
+#### Apache Web Server
+- Description: Apache is an open-source web server software.
+- Common Commands:
+  ```
+  gobuster dir -u http://10.129.14.97 -w /usr/share/wordlists/dirb/common.txt
+  GET 10.129.14.97/admin.php
+  ```
+
+#### MongoDB
+- Description: MongoDB is a NoSQL database program.
+- Common Commands:
+  ```
+  ./mongo mongodb://10.129.228.30:27017
+  show dbs
+  use databaseName
+  show collections
+  db.flag.find().pretty()
+  ```
+
+#### Rsync
+- Description: Rsync is a utility for efficiently transferring and synchronizing files between a computer and an external hard drive.
+- Common Commands:
+  ```
+  rsync --list-only 10.129.198.68::
+  rsync 10.129.198.68::public
+  rsync 10.129.198.68::public/flag.txt flag.txt
+  ```
+
+#### SQL Injection
+- Description: SQL Injection is a code injection technique used to attack data-driven applications.
+- Common Usage:
+  ```
+  Username: admin ' #
+  Password: anythingyouwant
+  ```
+
+#### MySQL
+- Description: MySQL is an open-source relational database management system.
+- Common Commands:
+  ```
+  mysql -h 10.129.218.27 -u root
+  show databases;
+  use databaseName;
+  show tables;
+  select * from tableName;
+  ```
+
+
+#### Whitepages
+-Used to find people, addresses and more information
+
+
+
+
+#### TFTP Server
+Description: TFTP is a simple file transfer protocol used for transferring file, doesn’t need authentication
+Common commands:
+tftp 10.129.95.185
+put shell.php
