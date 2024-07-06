@@ -1,6 +1,9 @@
 import subprocess
 import argparse
 
+#DESCRIPTION:
+#Generates a reverse TCP meterpreter payload using msfvenom and sets up a Metasploit listener to handle incoming connections, based on the specified local host and port provided via command-line arguments.
+
 #EXAMPLE USAGE:
 #python exploit.py -l 10.10.14.206 -p 443 
 #LHOST 10.10.14.206 with LPORT 443
