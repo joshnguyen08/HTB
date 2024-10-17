@@ -1,0 +1,22 @@
+POST INCIDENT RESPONSE:
+
+
+LLMNR is a legacy protocol primarily used for local name resolution when DNS isn’t available
+
+In the case of this incident, it was used to resolve a network path, most likely due to a typo made by the victim while trying to access a resource. (DCC01 instead of DC01).
+
+This typo prompted the query for DCC01 using LLMNR
+
+The attack on 172.17.79.135 listened for LLMNR requests, and it personated DCC01 after the broadcast from the victim, 172.17.79.136.
+
+The response to the victim machine prompted by the attacker caused a relay of NTLM authentication traffic, which the attacker captured the NTLMv2 hash as the victim attempted to authenticate. The NTLM traffic was then relayed to the attack via SMB, where the server challenege, NTProofSTR and NTLMV2 response were given.
+
+We were able to replicate the attack by using hashcat and gathering intel to crack the hash ourselves using the format:
+Username::Domain:ServerChallenge::NTProofStr::NTLMv2Response, which we found the password to be 
+NotMyPassword0k? Belonging to our victim JOHN.DEACON
+
+Mitigation steps:
+
+Disable LLMNR and NetBIOS on internal networks
+
+Enforce SMB signing to prevent NTLM relay attacks, and use strong passwords with MFA
