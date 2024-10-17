@@ -13,3 +13,92 @@ The Intrusion Detection System also indicated signs of LLMNR traffic, which is u
 The LLMNR traffic was directed towards Forela-WKstn002, which has the IP address 172.17.79.136. 
 A limited packet capture from the surrounding time is provided to you, our Network Forensics expert. 
 Since this occurred in the Active Directory VLAN, it is suggested that we perform network threat hunting with the Active Directory attack vector in mind, specifically focusing on LLMNR poisoning.
+
+
+Sherlock : Noxious
+
+The IDS device alerted us to a possible rogue device in the internal Active Directory network. The Intrusion Detection System also indicated signs of LLMNR traffic, which is unusual. It is suspected that an LLMNR poisoning attack occurred. The LLMNR traffic was directed towards Forela-WKstn002, which has the IP address 172.17.79.136. A limited packet capture from the surrounding time is provided to you, our Network Forensics expert. Since this occurred in the Active Directory VLAN, it is suggested that we perform network threat hunting with the Active Directory attack vector in mind, specifically focusing on LLMNR poisoning.
+
+Given a .zip file we downloaded, it contains a pcap.
+
+
+LLMNR is a protocol that allows both IPv4 and IPv6 hosts to perform name resolution for hosts on the same local network without requiring a DNS server or DNS configuration.
+
+Since this is for DNS, we can look for DNS protocol in wireshark.
+
+ip.dst == 172.17.79.136 && llmnr
+
+We find out that the source IP is 172.17.79.135, which is the malicious Ip of the attacker
+
+ip.src == 172.17.79.135 && dhcp is used to find the hostname of the attacker in the DHCP request packet not discover
+
+LLMNR poisoning attacks are often followed by attempts to capture NTLM hashes when a victim tries to authenticate. To filter for NTLM traffic, use this filter:
+
+Ntlmssp or we can use smb2
+
+In the SMB2header field, we can see the account john.deacon’s hash was captured with the domain FORELA
+
+NTLM traffic shows the credentials were relayed multiple times to the attacker’s machine, first starting at 2024-06-24 11:18:30
+
+The reason the victim was compromised was because there was a typo to navigation which was “DCC01” instead of DC01, which then resulted in LMNR traffic being queried.
+
+172.17.79.135 was the attacker and we saw standard query responses going back to the destination of 172.17.79.136 which was the victim.
+
+The NTLM server had a challenge value of 601019d191f054f1 which was found from a packet under the SMB2 -> simple protected negotiation -> negtokentarg -> NTLM secure service provider -> NTLM Server Challenge
+
+This was found in a session setup response packet
+
+In the session setup request packet, we can look for NTProof Str, which was c0cc803a6d9fb5a9082253a04dbd4cd4
+
+This was under the NTLMV2 response under NTLM Secure service provider as well
+
+
+We also want to take: This is the NTLMV2 response 
+C0cc803a6d9fb5a9082253a04dbd4cd4010100000000000080e4d59406c6da01cc3dcfc0de9b5f2600000000020008004e0042004600590001001e00570049004e002d00360036004100530035004c003100470052005700540004003400570049004e002d00360036004100530035004c00310047005200570054002e004e004200460059002e004c004f00430041004c00030014004e004200460059002e004c004f00430041004c00050014004e004200460059002e004c004f00430041004c000700080080e4d59406c6da0106000400020000000800300030000000000000000000000000200000eb2ecbc5200a40b89ad5831abf821f4f20a2c7f352283a35600377e1f294f1c90a001000000000000000000000000000000000000900140063006900660073002f00440043004300300031000000000000000000
+
+Removed first 16 bytes
+010100000000000080e4d59406c6da01cc3dcfc0de9b5f2600000000020008004e0042004600590001001e00570049004e002d00360036004100530035004c003100470052005700540004003400570049004e002d00360036004100530035004c00310047005200570054002e004e004200460059002e004c004f00430041004c00030014004e004200460059002e004c004f00430041004c00050014004e004200460059002e004c004f00430041004c000700080080e4d59406c6da0106000400020000000800300030000000000000000000000000200000eb2ecbc5200a40b89ad5831abf821f4f20a2c7f352283a35600377e1f294f1c90a001000000000000000000000000000000000000900140063006900660073002f00440043004300300031000000000000000000
+
+
+Now if we remove the first 16 bytes or 32 characters of the value above, then we format it into a file following:
+
+User::Domain:ServerChallenge::NTProofStr::NTLMv2Response(without the 16 bytes)
+
+We should crack the hash using hashcat
+
+john.deacon::FORELA:601019d191f054f1:c0cc803a6d9fb5a9082253a04dbd4cd4:010100000000000080e4d59406c6da01cc3dcfc0de9b5f2600000000020008004e0042004600590001001e00570049004e002d00360036004100530035004c003100470052005700540004003400570049004e002d00360036004100530035004c00310047005200570054002e004e004200460059002e004c004f00430041004c00030014004e004200460059002e004c004f00430041004c00050014004e004200460059002e004c004f00430041004c000700080080e4d59406c6da0106000400020000000800300030000000000000000000000000200000eb2ecbc5200a40b89ad5831abf821f4f20a2c7f352283a35600377e1f294f1c90a001000000000000000000000000000000000000900140063006900660073002f00440043004300300031000000000000000000
+
+hashcat -a 0 -m 5600 hashfile.txt /usr/share/wordlists/rockyou.txt.gz
+
+-a 0: Specifies the attack mode. 0 is the Straight mode, which applies wordlist rules.
+-m 5600: Specifies the hash type. 5600 is for NTLMv2 hashes.
+hashfile.txt: The file containing the hashes you want to crack.
+rockyouwordlist.txt: The wordlist to use for cracking, commonly located in Kali at /usr/share/wordlists/rockyou.txt.gz.
+
+Session..........: hashcat
+Status...........: Cracked
+Hash.Mode........: 5600 (NetNTLMv2)
+Hash.Target......: JOHN.DEACON::FORELA:601019d191f054f1:c0cc803a6d9fb5...000000
+Time.Started.....: Wed Oct 16 22:28:33 2024 (12 secs)
+Time.Estimated...: Wed Oct 16 22:28:45 2024 (0 secs)
+Kernel.Feature...: Pure Kernel
+Guess.Base.......: File (/usr/share/wordlists/rockyou.txt.gz)
+Guess.Queue......: 1/1 (100.00%)
+Speed.#1.........:   886.8 kH/s (0.92ms) @ Accel:512 Loops:1 Thr:1 Vec:4
+Recovered........: 1/1 (100.00%) Digests (total), 1/1 (100.00%) Digests (new)
+Progress.........: 10778624/14344385 (75.14%)
+Rejected.........: 0/10778624 (0.00%)
+Restore.Point....: 10776576/14344385 (75.13%)
+Restore.Sub.#1...: Salt:0 Amplifier:0-1 Iteration:0-1
+Candidate.Engine.: Device Generator
+Candidates.#1....: Nov2599 -> No Scrubs
+Hardware.Mon.#1..: Util: 50%
+
+
+See below, “NotMyPassword0k?” Was found to be the password
+
+JOHN.DEACON::FORELA:601019d191f054f1:c0cc803a6d9fb5a9082253a04dbd4cd4:010100000000000080e4d59406c6da01cc3dcfc0de9b5f2600000000020008004e0042004600590001001e00570049004e002d00360036004100530035004c003100470052005700540004003400570049004e002d00360036004100530035004c00310047005200570054002e004e004200460059002e004c004f00430041004c00030014004e004200460059002e004c004f00430041004c00050014004e004200460059002e004c004f00430041004c000700080080e4d59406c6da0106000400020000000800300030000000000000000000000000200000eb2ecbc5200a40b89ad5831abf821f4f20a2c7f352283a35600377e1f294f1c90a001000000000000000000000000000000000000900140063006900660073002f00440043004300300031000000000000000000:NotMyPassword0k?
+
+
+The victim was trying to navigate to \\DC01\DC-Confidential
+
