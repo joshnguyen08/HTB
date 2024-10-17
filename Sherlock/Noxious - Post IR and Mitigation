@@ -11,9 +11,13 @@ The attack on 172.17.79.135 listened for LLMNR requests, and it personated DCC01
 
 The response to the victim machine prompted by the attacker caused a relay of NTLM authentication traffic, which the attacker captured the NTLMv2 hash as the victim attempted to authenticate. The NTLM traffic was then relayed to the attack via SMB, where the server challenege, NTProofSTR and NTLMV2 response were given.
 
+
+In other words, the attacker impersonated DCC01, and it forced the victim to authenticate to itself, in doing so, it was able to grab key components to perform an offline password crack using hashcat. 
+
 We were able to replicate the attack by using hashcat and gathering intel to crack the hash ourselves using the format:
 Username::Domain:ServerChallenge::NTProofStr::NTLMv2Response, which we found the password to be 
 NotMyPassword0k? Belonging to our victim JOHN.DEACON
+
 
 Mitigation steps:
 
