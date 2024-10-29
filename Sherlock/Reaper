@@ -1,0 +1,14 @@
+Reaper
+
+Our SIEM alerted us to a suspicious logon event which needs to be looked at immediately . The alert details were that the IP Address and the Source Workstation name were a mismatch .You are provided a network capture and event logs from the surrounding time around the incident timeframe. Corelate the given evidence and report back to your SOC Manager.
+
+Resources:
+Security.evtx
+Ntlmrelay.pcapng
+
+Tools:
+Evtx_dump.py
+Wireshark
+
+Summary of event
+An attacker intercepted the NTLM hash of Arthur Kyle during his legitimate access to a file share on the Domain Controller. The attacker then used that stolen hash to gain unauthorized access to FORELA-WKSTN002. The security alert was triggered because the source IP of the malicious logon (172.17.79.135) did not match the expected workstation (FORELA-WKSTN002). This was most likely a man-in-the-middle attack orchestrated after gaining initial network access into the internal system. 
