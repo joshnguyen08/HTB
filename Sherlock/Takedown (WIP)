@@ -1,0 +1,27 @@
+Takedown Sherlock:
+
+We've identified an unusual pattern in our network activity, indicating a possible security breach. Our team suspects an unauthorized intrusion into our systems, potentially compromising sensitive data. Your task is to investigate this incident.
+
+10.3.19.101 sent a standard query to escuelademarina.com and received a response from the attacker (165.22.16.55)
+
+
+ip.addr == 165.22.16.55
+
+Right click and follow the TCP stream
+
+
+
+Why when accessing the malicious domain there wasn’t HTTP requests afterwards to show “GET” but it was smb protocol 
+
+Answer:
+In this case, it’s likely that the attacker used SMB to serve the VBS script directly from a shared directory, allowing it to be accessed by a legitimate process on the victim machine, without explicitly "downloading" it in the conventional sense. The script may have been accessed and executed directly over the SMB connection, potentially using tools like rundll32.exe or wscript.exe to run it.
+
+Victim sending data to 103.124.105.78 
+
+Attack Vector:
+
+The initial access vector is a malicious VBS script named AZURE_DOC_OPEN.vbs. The user acquired this script by accessing an SMB share (\\escuelademarina.com\) from a malicious domain (escuelademarina.com).
+
+After initial execution of the VBS script, the infected machine makes HTTP GET requests to another malicious domain (badbutperfect.com). Multiple HTTP GET requests are observed for different paths, such as /nrwncpwo, /jvtobaqj, /ozkpfzju, etc., which indicates that these requests are likely fetching various components of the malware or additional scripts to build the full attack chain.
+
+Following the initial setup and payload execution, the infected machine initiates communication with the Command and Control (C2) server. This connection is established by the malware to receive instructions, exfiltrate data, or await further payloads.
