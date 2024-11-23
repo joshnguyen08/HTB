@@ -1,0 +1,5 @@
+HTB Sherlock modules aim to provide interactive, guided exercises in various vectors such as DFIR, SOC, Threat Hunting, Malware Analysis, etc.
+
+Each module is designed to provide the user with artifacts to help them come to the conclusion of an incident that has occured.
+
+Commonly, we saw network logs, regedit, drives, log files, memory dumps, etc. 
