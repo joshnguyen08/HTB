@@ -1,0 +1,120 @@
+Compromised:
+
+Our SOC team detected suspicious activity in Network Traffic, the machine has been compromised and company information that should not have been there has now been stolen – it’s up to you to figure out what has happened and what data has been taken.
+
+Artifacts given:
+Capture.pcap
+
+Given statistics -> endpoints, IPV4. We can see the four biggest addresses based on traffic:
+172.16.1.191
+172.16.1.16
+23.163.0.37
+162.252.172.54
+
+By going to File - Export - HTTP Objects, there was a packet from image/gif with filename 6ctf5JL from 162.252.172.54
+
+Let’s try to see if theres anything malicious with that ip.
+ip.addr==162.252.172.54
+
+These traffic pop out, a get request to and from 172.16.1.191 -> 162.252.172.54
+2023-05-17 11:32:46.155265	116	172.16.1.191	162.252.172.54	HTTP	GET /9GQ5A8/6ctf5JL HTTP/1.1 	GET /9GQ5A8/6ctf5JL HTTP/1.1 
+
+I went to follow the HTTP stream by right clicking - Follow - HTTP Stream
+
+Seems to be heavily encoded:
+The User-Agent is WindowsPowerShell/5.1.22621.963, indicating that this request may have been sent programmatically via PowerShell.
+
+Content-Type: image/gif
+
+MZ......................@................................... .........	.!..L.!This program cannot be run in DOS mode.
+
+The payload, however, begins with MZ, which is the magic number for Windows executable files (PE format).
+
+┌──(kali㉿kali)-[~/Downloads]
+└─$ sha256sum 6ctf5JL   
+9b8ffdc8ba2b2caa485cca56a82b2dcbd251f65fb30bc88f0ac3da6704e4d3c6  6ctf5JL
+
+
+I went to virustotal.com and I inputted the hash to perform static malware analysis. It appeared as a trojan. 
+
+
+59/72 security vendors flagged this file as malicious 
+Popular threat label
+trojan.pikabot/mikey
+
+Creation Time
+2023-05-17 09:38:43 UTC
+First Seen In The Wild
+2023-05-19 14:01:21 UTC
+First Submission
+2023-05-17 19:04:23 UTC
+Last Submission
+2024-11-23 17:12:41 UTC
+Last Analysis
+2024-11-22 14:43:46 UTC
+
+The malware used HTTPS traffic with a self-signed certificate. What are the ports, from smallest to largest?
+
+tls.handshake.type == 1
+
+Destination ports of 2078, 2222, 32999 
+
+Malware is trying to access a web server over HTTPS, but it is using unusual destination ports (2078, 2222, 32999) instead of the standard HTTPS port 443. Highly likely it's a C2 server that the attacker is hosting over the web
+
+What is the id-at-localityName of the self-signed certificate associated with the first malicious IP?
+
+uTF8String: Pyopneumopericardium
+
+
+What is the notBefore time(UTC) for this self-signed certificate?
+utcTime: 2023-05-14 08:36:52 (UTC)
+
+
+subject: rdnSequence (0)
+    rdnSequence: 6 items (id-at-commonName=votation.bzh,id-at-localityName=Pyopneumopericardium,id-at-organizationalUnitName=Undelightful,id-at-organizationName=Uneared Inc.,id-at-stateOrProvinceName=KI,id-at-countryName=SX)
+        RDNSequence item: 1 item (id-at-countryName=SX)
+            RelativeDistinguishedName item (id-at-countryName=SX)
+                Object Id: 2.5.4.6 (id-at-countryName)
+                CountryName: SX
+        RDNSequence item: 1 item (id-at-stateOrProvinceName=KI)
+            RelativeDistinguishedName item (id-at-stateOrProvinceName=KI)
+                Object Id: 2.5.4.8 (id-at-stateOrProvinceName)
+                DirectoryString: uTF8String (4)
+                    uTF8String: KI
+        RDNSequence item: 1 item (id-at-organizationName=Uneared Inc.)
+            RelativeDistinguishedName item (id-at-organizationName=Uneared Inc.)
+                Object Id: 2.5.4.10 (id-at-organizationName)
+                DirectoryString: uTF8String (4)
+                    uTF8String: Uneared Inc.
+        RDNSequence item: 1 item (id-at-organizationalUnitName=Undelightful)
+            RelativeDistinguishedName item (id-at-organizationalUnitName=Undelightful)
+                Object Id: 2.5.4.11 (id-at-organizationalUnitName)
+                DirectoryString: uTF8String (4)
+                    uTF8String: Undelightful
+        RDNSequence item: 1 item (id-at-localityName=Pyopneumopericardium)
+            RelativeDistinguishedName item (id-at-localityName=Pyopneumopericardium)
+        RDNSequence item: 1 item (id-at-commonName=votation.bzh)
+            RelativeDistinguishedName item (id-at-commonName=votation.bzh)
+                Object Id: 2.5.4.3 (id-at-commonName)
+                DirectoryString: uTF8String (4)
+                    uTF8String: votation.bzh
+
+
+dns.qry.name
+
+What was the domain used for tunneling?
+steasteel.net
+
+Attacker was using  subdomain-based DNS tunneling for communication, such as lba.h.dns.steasteel.net, kba.h.dns.steasteel.net, pba.h.dns.steasteel.net and more. 
+
+Incident:
+The attacker gained initial access to the victim host 172.16.1.191 via a malicious trojan (Pikabot) delivered through an HTTP GET request from 162.252.172.54.
+Post-compromise, the trojan initiated:
+Malicious DNS activity: Frequent DNS queries to subdomains of steasteel.net, leveraging subdomain-based DNS tunneling for covert communication.
+Encrypted HTTPS traffic: Communication over non-standard ports 2078, 2222, 32999, using a self-signed certificate, indicating attempts to communicate with a Command-and-Control (C2) server.
+The combination of DNS tunneling and HTTPS traffic suggests data exfiltration and potential remote control of the victim host.
+
+Remediation Steps:
+Quarantine the compromised host machine. Block outbound IP and domains associated.
+Terminate any running processes associated. Scan and isolate the system. Remove the trojan.  Remove any signs of persistence on the host machine such as scheduler changes, registry changes, boot-up, etc. 
+Provide user awareness on phishing attempts. Provide a strong EDR solution and web traffic firewall. 
