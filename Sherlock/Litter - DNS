@@ -1,0 +1,106 @@
+Litter
+Khalid has just logged onto a host that he and his team use as a testing host for many different purposes. It’s off their corporate network but has access to lots of resources on the network. The host is used as a dumping ground for a lot of people at the company, but it’s very useful, so no one has raised any issues. Little does Khalid know; the machine has been compromised and company information that should not have been on there has now been stolen – it’s up to you to figure out what has happened and what data has been taken.
+
+Artifacts given:
+Suspicious_traffic.pcap
+
+Importing the pcap file into wireshark then going to file -> export -> HTTP to see any requests for downloads
+We see hostnames of ocsp.digicert.com
+download.windowsupdate.com
+emdl.ws.microsoft.com
+au.download.windowsupdate.com
+The pcap file starts off with DNS request and also usage of LLMNR which is a fallback for DNS
+dns query to wpad.localdomain then a MDNS to wpad.local then an LLMNR to wpad
+
+Highest traffic size for top 4 endpoints consists of these IPs:
+192.168.157.144
+173.194.129.201
+62.252.115.140
+62.252.191.206
+
+At a glance, what protocol seems to be suspect in this attack?
+DNS is the most suspicious traffic we have seen so far in this pcap traffic file.
+
+There seems to be a lot of traffic between our host and another, what is the IP address of the suspect host?
+By going to statistics -> conversations -> IPv4 and filtering for largest packets being sent, we see the suspect host is 192.168.157.145
+This indicates that our host 192.168.157.144 to suspect host of 192.168.157.145
+
+192.168.157.2 seems to be the normal DNS server and there is some packets of 192.168.157.145 sending DNS query response to 192.168.157.144. This may suggest a DNS spoofing attack
+
+Let’s query more to see what the suspect host is doing: ip.addr==192.168.157.145
+So judging by the attack, it seems 192.168.157.144 had a query which was answered / responded by 192.168.157.145. Maybe this changed the domain and queries to enter malicious websites for the 192.168.157.144 host.
+2023-04-30 06:31:46.788701	14191	192.168.157.144	192.168.157.145	DNS	Standard query 0x43b2 CNAME 7511012ec7379eb1fd.microsofto365.com	Standard query 0x43b2 CNAME 7511012ec7379eb1fd.microsofto365.com
+2023-04-30 06:31:46.791019	14192	192.168.157.145	192.168.157.144	DNS	Standard query response 0x43b2 CNAME 7511012ec7379eb1fd.microsofto365.com CNAME 699f012ec7b1fd379e.microsofto365.com	Standard query response 0x43b2 CNAME 7511012ec7379eb1fd.microsofto365.com CNAME 699f012ec7b1fd379e.microsofto365.com
+The victim's DNS query is intercepted.
+The attacker injects their crafted response with fake CNAME records.
+The victim is redirected to domains that might host phishing pages, deliver malware, or further compromise the system.
+
+The sub-domains are represented in hexadecimal, which is highly unusual and a classic sign of
+DNS tunnelling. To confirm this, we filtered the packets by query length, multiple subdomains
+suspicious looking subdomains associated with microsofto365.com . 
+
+
+What is the first command the attacker sends to the client?
+Whoami
+
+ip.addr == 192.168.157.145 and dns.qry.name.len > 100
+By using cyberchef, we can see that the name of the dns queries such as
+1eca012ec7305cb1f877686f616d690a6465736b746f702d756d6e636265.375c746573740d0a0d0a433a5c55736572735c746573745c446f776e6c6f.6164733e.microsofto365.com
+Can be decoded from Hex to plain text.
+The above gives an output of:
+Ê.Ç0\±øwhoami
+desktop-umncbe7\test
+
+C:\Users\test\Downloads>6
+
+
+tcpdump -nr suspicious_traffic.pcap port 53 -w dns.pcap
+Using a python script to decode and place all the subdomain queries in an output.txt file. Use the script below: (indentatation and spacing not put in)
+from scapy.all import * def is_hex(s): """Check if the string consists only of hexadecimal characters.""" try: int(s, 16) return True except ValueError: return False r = rdpcap('dns.pcap') with open("output.txt", "w") as myfile: c = b"" Okay now lets breakdown the script and its features: from scapy.all import * : Imports all modules from Scapy, a powerful packet manipulation library. def is_hex(s): : Defines a function is_hex that checks if a given string s contains only hexadecimal characters. try: : Begins a try block to attempt the conversion of s to an integer with a hexadecimal base. int(s, 16) : Tries to convert the string s to an integer with base 16 (hexadecimal). return True : Returns True if the conversion succeeds, meaning s is a valid hex string. except ValueError: : Catches a ValueError that occurs if s is not a valid hexadecimal string. return False : Returns False if a ValueError is caught, indicating s is not a valid hex string. r = rdpcap('dns.pcap') : Reads a pcap file named 'dns.pcap' into the variable r using Scapy's rdpcap function. with open("output.txt", "w") as myfile: : Opens a file named 'output.txt' in write mode and assigns it to the variable myfile . The file is guaranteed to close when the block ends. c = b"" : Initialises a variable c as an empty byte string to store the previous DNS query for comparison. for packet in r: : Loops through each packet in the pcap file. if packet.haslayer(DNSQR): : Checks if the current packet has a DNS Question Record (DNSQR) layer. a = packet[DNSQR].qname : Retrieves the queried name ( qname ) from the DNSQR layer and stores it in variable a . no9 = a[18:]: : Slices the qname starting from the 19th character to remove the first 18 characters, which are assumed to be non-hexadecimal, storing it in no9 . for packet in r: if packet.haslayer(DNSQR): a = packet[DNSQR].qname no9 = a[18:] b = no9.replace(b'microsofto365.com.', b'') if not b or b == c: continue c = b try: hex_chars = ''.join(ch for ch in b.decode(errors='ignore') if ch in '0123456789abcdefABCDEF') ascii_str = bytes.fromhex(hex_chars).decode('utf-8', errors='ignore') myfile.write(ascii_str + '\n') except ValueError as e: print(f"Error converting hex to ASCII: {e}")
+
+Python3 test.py
+
+Now do nano output.txt to see all the information
+Here’s a snippet:
+
+C:\Users\test\Downloads>
+
+whoami
+desktop-umncbe7\test
+
+C:\Users\test\Downloads>
+
+What is the version of the DNS tunneling tool the attacker is using?
+28/05/2016  21:38           142,336 dnscat2-v0.07-client
+
+The attackers attempts to rename the tool they accidentally left on the clients host. What do they name it to?
+Search for ren (short for rename) 
+ren dnscat2-v0.07-client-win32.exe win_installer.exe
+
+The attacker attempts to enumerate the users cloud storage. How many files do they locate in their cloud storage directory?
+There are no files in the OneDrive
+
+
+What is the full location of the PII file that was stolen?
+type "C:\Users\test\Documents\client data optimisation\user details.csv"
+
+Exactly how many customer PII records were stolen?
+721
+
+Incident:
+The machine is described as a “dumping ground” used by many in the company for various purposes.
+It is poorly secured and located off the corporate network but has access to company resources.
+Given the context, the compromise likely occurred before the DNS spoofing, after the dnscat was installed. 
+-Either through a phishing attack, exploitation of a vulnerability, or an insider threat.
+-The attacker deployed the DNS tunneling tool (dnscat2-v0.07-client) on the host as part of their toolkit.
+
+The attacker manipulates DNS responses via DNS spoofing using 192.168.157.145, which is not the legitimate DNS server (192.168.157.2).
+This was done to:
+-Redirect the victim’s DNS queries to malicious domains controlled by the attacker.
+-Create a channel for DNS tunneling.
+The attacker uses dnscat2-v0.07-client to create a covert DNS tunnel.
+The DNS tunnel is used to:
+-Send commands to the compromised host.
+-Exfiltrate data from the host back to the attacker.
+C:\Users\test\Documents\client data optimisation\user details.csv was exfiltrated which compromised the PII of 721 customer records
+The malware/tunneling tool (dnscat2) installed on the victim system interprets the DNS query and executes the command.
