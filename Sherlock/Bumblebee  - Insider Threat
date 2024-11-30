@@ -1,0 +1,199 @@
+Bumblebee 
+
+  
+
+An external contractor has accessed the internal forum here at Forela via the Guest Wi-Fi, and they appear to have stolen credentials for the administrative user! We have attached some logs from the forum and a full database dump in sqlite3 format to help you in your investigation. 
+
+  
+
+  
+
+Artifacts given: 
+
+access.log 
+
+phpbb.sqlite3 
+
+  
+
+What was the username of the external contractor? 
+
+  
+
+apoole1 
+
+  
+
+Found this in the phpbb_users table : 
+
+m6b8xhqmx0qo|0|10.10.0.78|1682424941|apoole1|apoole1|$2y$10$X6g4kRzlGjLcQhOt8t26f.qpstOQVzFJP8U3ETdP7.ZpUQhwqiCae|1682424941|apoole1@contractor.net|365438717222||1682425447|1682424941|1682425042|viewtopic.php?f=2&t=2||0|0|0|0|0|0|1|en|Africa/Algiers|D M d, Y g:i a|1|0||0|0|0|0|-3|0|0|t|d|0|t|a|0|1|0|1|1|1|1|230271|||0|0|||||||20sa4grod4hrtg4v|0|0|0 
+
+  
+
+  
+
+  
+
+What is the post_id of the malicious post that the contractor made? 
+
+  
+
+  
+
+  
+
+By searching for 10.10.0.78 in our access.log, we see numerous get and post requests: 
+
+  
+
+10.10.0.78 - - [25/Apr/2023:12:07:47 +0100] "POST /ucp.php?mode=register&sid=a6ef84d1dbe44514d987667afd8cf504 HTTP/1.1" 200 11778 "http://10.10.0.27/ucp.php?mode=register&sid=a6ef84d1dbe44514d987667afd8cf504" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:106.0) Gecko/20100101 Firefox/106.0" 
+
+  
+
+  
+
+SELECT * FROM phpbb_posts; 
+
+  
+
+We see 9 
+
+  
+
+What is the full URI that the credential stealer sends its data to? 
+
+  
+
+http://10.10.0.78/update.php 
+
+  
+
+We saw that link in the post request. 
+
+  
+
+When did the contractor log into the forum as the administrator? (UTC) 
+
+  
+
+26/04/2023 10:53:12 
+
+  
+
+sqlite> SELECT * FROM phpbb_log; 
+
+49|0|48|0|0|0|0|10.255.254.2|1682352616|LOG_CLEAR_ADMIN| 
+
+50|0|48|0|0|0|0|10.255.254.2|1682353038|LOG_CONFIG_REGISTRATION| 
+
+51|0|48|0|0|0|0|10.255.254.2|1682353166|LOG_ACL_ADD_FORUM_LOCAL_F_|a:2:{i:0;s:7:"Welcome";i:1;s:41:"<span class="sep">Registered users</span>";} 
+
+52|0|48|0|0|0|0|10.255.254.2|1682420947|LOG_ADMIN_AUTH_SUCCESS| 
+
+53|3|48|0|0|0|51|10.255.254.2|1682420960|LOG_USER_NEW_PASSWORD|a:1:{i:0;s:6:"apoole";} 
+
+54|0|48|0|0|0|0|10.255.254.2|1682420962|LOG_USER_USER_UPDATE|a:1:{i:0;s:6:"apoole";} 
+
+55|0|48|0|0|0|0|10.255.254.2|1682420963|LOG_USER_USER_UPDATE|a:1:{i:0;s:6:"apoole";} 
+
+56|0|48|0|0|0|0|10.255.254.2|1682423167|LOG_EXT_ENABLE|a:1:{i:0;s:13:"rokx/dborldap";} 
+
+57|0|48|0|0|0|0|10.255.254.2|1682423251|LOG_CONFIG_AUTH| 
+
+58|3|48|0|0|0|51|10.255.254.2|1682423286|LOG_USER_NEW_PASSWORD|a:1:{i:0;s:6:"apoole";} 
+
+59|0|48|0|0|0|0|10.255.254.2|1682423286|LOG_USER_USER_UPDATE|a:1:{i:0;s:6:"apoole";} 
+
+60|0|48|0|0|0|0|10.255.254.2|1682424836|LOG_CONFIG_AUTH| 
+
+61|0|48|0|0|0|0|10.10.0.78|1682506392|LOG_ADMIN_AUTH_SUCCESS| 
+
+62|0|48|0|0|0|0|10.10.0.78|1682506431|LOG_USERS_ADDED|a:2:{i:0;s:14:"Administrators";i:1;s:6:"apoole";} 
+
+63|0|48|0|0|0|0|10.10.0.78|1682506471|LOG_DB_BACKUP| 
+
+  
+
+  
+
+In the forum there are plaintext credentials for the LDAP connection, what is the password? 
+
+  
+
+SELECT * FROM phpbb_config; 
+
+  
+
+Passw0rd1 
+
+  
+
+What is the user agent of the Administrator user? 
+
+  
+
+Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36 
+
+  
+
+What time did the contractor add themselves to the Administrator group? (UTC) 
+
+  
+
+SELECT * FROM phpbb_log; 
+
+  
+
+62|0|48|0|0|0|0|10.10.0.78|1682506431|LOG_USERS_ADDED|a:2:{i:0;s:14:"Administrators";i:1;s:6:"apoole";} 
+
+  
+
+2023-04-26 10:53:51 
+
+  
+
+What time did the contractor download the database backup? (UTC) 
+
+  
+
+63|0|48|0|0|0|0|10.10.0.78|1682506471|LOG_DB_BACKUP| 
+
+  
+
+2023-04-26 11:01:38 
+
+  
+
+What was the size in bytes of the database backup as stated by access.log? 
+
+  
+
+10.10.0.78 - - [26/Apr/2023:12:01:38 +0100] "GET /store/backup_1682506471_dcsr71p7fyijoyq8.sql.gz HTTP/1.1" 200 34707 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/112.0" 
+
+  
+
+  
+
+Incident: 
+
+External contractor accessed the internal forum at Forela where there was an exposed stolen credential.   
+
+  
+
+The user, apoole1 with an IP of 10.10.0.78, logged into the forums and created a malicious post that contained strange code. This may of stolen the credentials. 
+
+  
+
+The attacker managed to locate a specific form on the forum that when submitted would trigger a generation of a cookie token and send that data to a server located at the attacker's IP to harvest the credentials. 
+
+  
+
+The attacker used their stolen credentials to add themselves to the administrator group in the forum at 2023-04-26 10:53:51 UTC. 
+
+  
+
+After gaining administrative access, the attacker created a database backup at 2023-04-26 10:54:31 UTC, and shortly after, downloaded the database backup at 2023-04-26 11:01:38 UTC. 
+
+  
+
+The backup file was of size 34,707 bytes, which was recorded in the server’s access log. 
