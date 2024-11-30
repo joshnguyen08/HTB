@@ -1,0 +1,100 @@
+
+Tracer
+
+A junior SOC analyst on duty has reported multiple alerts indicating the presence of PsExec on a workstation. They verified the alerts and escalated the alerts to tier II. As an Incident responder you triaged the endpoint for artefacts of interest. Now please answer the questions regarding this security event so you can report it to your incident manager.
+
+Artifacts given:
+C drive folder of the affected endhost
+System32 winevt logs
+
+
+In order to read the evtx files, we need to parse the log files using pip library called evtx:
+pip install evtx
+
+Create a script to read the command line argument which will be the path to the file:
+import Evtx.Evtx as evtx
+import Evtx.Views as e_views
+import argparse
+
+def read_evtx(file_path):
+    with evtx.Evtx(file_path) as log:
+        for record in log.records():
+            print(record.xml())
+
+if __name__ == "__main__":
+    # Create the parser
+    parser = argparse.ArgumentParser(description="Read and print .evtx log files.")
+   
+    # Add the file path argument
+    parser.add_argument("file_path", help="Path to the .evtx log file")
+
+    # Parse the arguments
+    args = parser.parse_args()
+
+    # Call the read_evtx function with the provided file path
+    read_evtx(args.file_path)
+
+
+python3 readevtx.py ~/Downloads/Tracer/C/Windows/System32/winevt/logs/Security.evtx > securityevents.txt
+
+There's also an application.evtx and a Windows Powershell.evtx
+
+There are also numerous prefetch files
+
+There is one called PSEXESVC.EXE-AD70946C.pf
+
+We also have two files that are NTFS log files. PSExec uses SMB.
+
+MFTECmd are essential tool that can be used to easily make sense of the $MFT and other metadata files on a given Windows system. MFTECmd is also capable of parsing the $J, $Boot, $SDS and (eventually) $LogFile.
+
+
+
+
+The SOC Team suspects that an adversary is lurking in their environment and are using PsExec to move laterally. A junior SOC Analyst specifically reported the usage of PsExec on a WorkStation. How many times was PsExec executed by the attacker on the system?
+
+Use "PECmd.exe -f PSEXESVC.EXE-AD70946C.pf"
+We can see it had a runcount of 9
+
+What is the name of the service binary dropped by PsExec tool allowing attacker to execute remote commands?
+
+Use "PECmd.exe -f PSEXESVC.EXE-AD70946C.pf"
+ 
+psexesvc.exe
+
+Now we have confirmed that PsExec ran multiple times, we are particularly interested in the 5th Last instance of the PsExec. What is the timestamp when the PsExec Service binary ran?
+
+07/09/2023 12:06:54
+
+
+Can you confirm the hostname of the workstation from which attacker moved laterally?
+
+Forela-Wkstn001
+
+
+What is full name of the Key File dropped by 5th last instance of the Psexec?
+
+MFTECmd.exe -f $J --csv results1.csv
+
+PSEXEC-FORELA-WKSTN001-95F03CFE.key
+
+Can you confirm the timestamp when this key file was created on disk?
+
+07/09/2023 12:06:55
+
+What is the full name of the Named Pipe ending with the "stderr" keyword for the 5th last instance of the PsExec?
+
+“PSEXEC-FORELA-WKSTN001–95F03CFE.key” and we know the creation time of this file , so we will narrow our search to this time which is “07/09/2023 12:06:55” lets check it out
+
+\PSEXESVC-FORELA-WKSTN001-3056-stderr
+
+Incident:
+
+PsExec is a command-line tool that is part of the Sysinternals Suite (developed by Microsoft). It allows system administrators and security professionals to remotely execute commands on Windows computers.
+
+We have concluded that FORELA-WKSTN001 was compromised, and there was attempts to move laterally from it.
+
+Most likely method the attacker used to execute PsExec is through compromised credentials
+
+PsExec was the main command that was executing this attack, as it allowed for remote code execution on the compromised hosts.
+
+The PsExec dropped a service binary called psexesvc.exe that allowed the attacker to execute remote commands.
