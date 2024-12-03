@@ -1,0 +1,257 @@
+Logjammer 
+
+  
+
+You have been presented with the opportunity to work as a junior DFIR consultant for a big consultancy. However, they have provided a technical assessment for you to complete. The consultancy Forela-Security would like to gauge your Windows Event Log Analysis knowledge. We believe the Cyberjunkie user logged in to his computer and may have taken malicious actions. Please analyze the given event logs and report back. 
+
+  
+
+Artifacts given: 
+
+Powershell-Operational.evtx 
+
+Security.evtx 
+
+System.evtx 
+
+Windows Defender-Operational.evtx 
+
+Windows Firewall-Firewall.evtx 
+
+  
+
+We will need to use evtx_dumper 
+
+git clone https://github.com/williballenthin/python-evtx.git 
+
+  
+
+We saw a 1102 event code coming from Cyberjunkie, this means the security log was cleared 
+
+  
+
+When did the cyberjunkie user first successfully log into his computer? (UTC) 
+
+  
+
+By looking at security logs, we see CyberJunkie logged in first at 27/03/2023 14:37:09 with event code 4648 
+
+  
+
+The user tampered with firewall settings on the system. Analyze the firewall event logs to find out the Name of the firewall rule added? 
+
+  
+
+By looking at firewall logs, we saw an event with code 2004 which meant creation of new inbound/outbound rule. The rule name was also highly suspicious, it was called "Metasploit C2 Bypass" 
+
+  
+
+Whats the direction of the firewall rule? 
+
+  
+
+By looking at the same log, we saw local port was set to * but remote port was set to 4444. This highly signifies anyone in the organization can talk to attacker's 4444 port. So outbound connection 
+
+  
+
+  
+
+The user changed audit policy of the computer. Whats the Subcategory of this changed policy? 
+
+  
+
+Look for event code 4719 meaning system audit policy was changed. 
+
+<Data Name="SubcategoryId">%%12804</Data> 
+
+<Data Name="SubcategoryGuid">{0cce9227-69ae-11d9-bed3-505054503030}</Data> 
+
+<Data Name="AuditPolicyChanges">%%8449</Data> 
+
+  
+
+Other Object Access Events 
+
+  
+
+The user "cyberjunkie" created a scheduled task. Whats the name of this task? 
+
+  
+
+Look for event code 4698 meaning a scheduled task was created. 
+
+<EventData><Data Name="SubjectUserSid">S-1-5-21-3393683511-3463148672-371912004-1001</Data> 
+
+<Data Name="SubjectUserName">CyberJunkie</Data> 
+
+<Data Name="SubjectDomainName">DESKTOP-887GK2L</Data> 
+
+<Data Name="SubjectLogonId">0x0000000000025f28</Data> 
+
+<Data Name="TaskName">\HTB-AUTOMATION</Data> 
+
+  
+
+HTB-AUTOMATION 
+
+  
+
+Whats the full path of the file which was scheduled for the task? 
+
+  
+
+C:\Users\CyberJunkie\Desktop\Automation-HTB.ps1 
+
+  
+
+  
+
+  &lt;Exec&gt; 
+
+      &lt;Command&gt;C:\Users\CyberJunkie\Desktop\Automation-HTB.ps1&lt;/Command&gt; 
+
+      &lt;Arguments&gt;-A cyberjunkie@hackthebox.eu&lt;/Arguments&gt; 
+
+    &lt;/Exec&gt; 
+
+  &lt;/Actions&gt; 
+
+  
+
+  
+
+What are the arguments of the command? 
+
+  
+
+Keep looking at the log above. 
+
+-A cyberjunkie@hackthebox.eu 
+
+  
+
+  
+
+  
+
+The antivirus running on the system identified a threat and performed actions on it. Which tool was identified as malware by antivirus? 
+
+  
+
+  
+
+Go to the windows defender evtx file, then parse for anything after initial access, then parse further for quarantined files. 
+
+  
+
+We found sharphound 
+
+  
+
+<Data Name="Path">containerfile:_C:\Users\CyberJunkie\Downloads\SharpHound-v1.1.0.zip; file:_C:\Users\CyberJunkie\Downloads\SharpHound-v1.1.0.zip-&gt;SharpHound.exe; webfile:_C:\Users\CyberJunkie\Downloads\SharpHound-v1.1.0.zip|https://objects.githubusercontent.com/github-production-release-asset-2e65be/385323486/70d776cc-8f83-44d5-b226-2dccc4f7c1e3?X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;X-Amz-Credential=AKIAIWNJYAX4CSVEH53A%2F20230327%2Fus-east-1%2Fs3%2Faws4_request&amp;X-Amz-Date=20230327T144228Z&amp;X-Amz-Expires=300&amp;X-Amz-Signature=f969ef5ca3eec150dc1e23623434adc1e4a444ba026423c32edf5e85d881a771&amp;X-Amz-SignedHeaders=host&amp;actor_id=0&amp;key_id=0&amp;repo_id=385323486&amp;response-content-disposition=attachment%3B%20filename%3DSharpHound-v1.1.0.zip&amp;response-content-type=application%2Foctet-stream|pid:3532,ProcessStart:133244017530289775</Data> 
+
+<Data Name="Origin ID">4</Data> 
+
+  
+
+  
+
+Whats the full path of the malware which raised the alert? 
+
+  
+
+C:\Users\CyberJunkie\Downloads\SharpHound-v1.1.0.zip 
+
+  
+
+  
+
+  
+
+What action was taken by the antivirus? 
+
+  
+
+Quarantine 
+
+  
+
+The user used Powershell to execute commands. What command was executed by the user? 
+
+  
+
+Go to the PowerShell evtx logs, then parse for anything during 2023 - 03 - 27 also keep in mind the workstation is DESKTOP-887GK2L 
+
+  
+
+<Data Name="Payload">CommandInvocation(Get-FileHash): "Get-FileHash" 
+
+ParameterBinding(Get-FileHash): name="Algorithm"; value="md5" 
+
+ParameterBinding(Get-FileHash): name="Path"; value=".\Desktop\Automation-HTB.ps1" 
+
+  
+
+Get-FileHash -Algorithm md5 .\Desktop\Automation-HTB.ps1 
+
+  
+
+  
+
+We suspect the user deleted some event logs. Which Event log file was cleared? 
+
+  
+
+Look for event code 1102 in the security log and 104 code in the system logs 
+
+  
+
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event"><System><Provider Name="Microsoft-Windows-Eventlog" Guid="{fc65ddd8-d6ef-4962-83d5-6e5cfe9ce148}"></Provider> 
+
+<EventID Qualifiers="">104</EventID> 
+
+  
+
+<Channel>Microsoft-Windows-Windows Firewall With Advanced Security/Firewall</Channel> 
+
+  
+
+Incident: 
+
+This was a technical assessment to be completed by DFIR consultant.  
+
+  
+
+The vector for initial access has not yet been determined.  
+
+  
+
+We figured out user Cyberjunkie has gained into the system via workstation DESKTOP-887GK2L 
+
+  
+
+Afterwards, there was an attempt on the firewall to allow malicious outbound traffic from victim machines to a Metasploit server on port 4444. This was an added outbound rule. 
+
+  
+
+Furthermore, the audit log was cleared prior in attempts to hide malicious activity. The event logs was Microsoft-Windows-Windows Firewall With Advanced Security/Firewall.  
+
+  
+
+Audit policy was also changed on the workstation.  
+
+  
+
+Alongside this, persistence was used to further control access via a scheduled task creation called HTB-AUTOMATION. 
+
+  
+
+Sharpbound also tried to install, a malicious LDAP attacking tool, but was quickly quarantined by Windows Defender. 
+
+  
+
+Attacker also used the Powershell tool called Get-FileHash in order to examine the persistent PS1 script that would be used during scheduled task. 
+
+ 
+
+ 
