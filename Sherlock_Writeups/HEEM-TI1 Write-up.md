@@ -12,7 +12,9 @@ Difficulty:<font color="Green">Easy</font>
 ## Scenario
 ```
 You are a cybersecurity analyst for a U.S.-based managed service provider (MSP) that uses Versa Director to manage client networks.
- A recent security alert indicates suspicious activity on your Versa Director servers, with signs of zero-day exploitation and credential theft.
+
+A recent security alert indicates suspicious activity on your Versa Director servers, with signs of zero-day exploitation and credential theft.
+
 Your manager suspects Volt Typhoon is behind the attack, and you must investigate their tactics using MITRE ATT&CK to assess the breach and recommend mitigations.
 
 ```
