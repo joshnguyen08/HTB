@@ -1,0 +1,54 @@
+TeamWork
+
+It is Friday afternoon and the SOC at Edny Consulting Ltd has received alerts from the workstation of Jason Longfield, a software engineer on the development team, regarding the execution of some discovery commands. Jason has just gone on holiday and is not available by phone. The workstation appears to have been switched off, so the only evidence we have at the moment is an export of his mailbox containing today's messages. As the company was recently the victim of a supply chain attack, this case is being taken seriously and the Cyber Threat Intelligence team is being called in to determine the severity of the threat.
+Artifacts:
+13 .eml files (subjects below)
+
+Subject: 49K Building Systems Exposed =?utf-8?Q?=F0=9F=8F=A2=2C?= Cellebrite
+ blocks Serbia =?utf-8?Q?=F0=9F=93=B1=2C?= Cracking Dashcams
+ =?utf-8?Q?=F0=9F=93=B7?=
+Subject: A reference manual for people who design and build software
+Subject: GibberLink: Breakthrough in How Voice Assistants Communicate
+ AI-to-AI
+Subject: GPT 4.5 =?utf-8?Q?4=EF=B8=8F=E2=83=A3=2C?= Meta AI Chatbot App
+ =?utf-8?Q?=F0=9F=93=B1=2C?= Emergent Misalignment
+ =?utf-8?Q?=E2=9A=96=EF=B8=8F?=
+Subject: HashiCorp joins IBM =?utf-8?Q?=F0=9F=A4=9D=2C?= Custom Transport
+ Protocol =?utf-8?Q?=E2=9C=A8=2C?= Copilot for Azure DevOps
+ =?utf-8?Q?=F0=9F=94=AE?=
+Subject: Microsoft will pull the plug on Skype in May
+Subject: OpenAI launches GPT-4.5 =?utf-8?Q?=F0=9F=A7=A0=2C?= Figure home
+ robots =?utf-8?Q?=F0=9F=A4=96=2C?= advice for CS students
+ =?utf-8?Q?=F0=9F=91=A8=E2=80=8D=F0=9F=92=BB?=
+Subject: Opportunity to Invest in NFT Game Project
+Subject: SEC Drops Consensys Case =?utf-8?Q?=E2=9A=96=EF=B8=8F=2C?= Base
+ Upgrades =?utf-8?Q?=F0=9F=A6=BE=2C_Metam?=
+ =?utf-8?Q?ask=E2=80=99s?= Updates =?utf-8?Q?=F0=9F=A6=8A?=
+Subject: =?utf-8?Q?SWLW=20#640=3A=20The=20burdens=20of=20data=2C=20Creating=20a=20sense=20of=20stability=2C=20and=20more.?=
+Subject: Update on JavaScript Authentication Module
+Subject: Your New Online Project Management Tool: Smartsheet
+Subject: Your online event invitation for "Sync before Jason holiday: Software
+ Development Progress and Insights"
+
+Identify the sender of the suspicious email.
+-It was from the opportunity to invest in NFG Game project, which was most suspicious
+theodore.todtenhaupt@developingdreams.site
+
+The suspicious email came from a custom domain, identify its creation date.
+https://web.archive.org/web/20250219112815/https://www.whois.com/whois/developingdreams.site 
+-Domain is developingdreams.site
+2025-01-31
+The domain was registered shortly before the suspicious email was received, which likely corresponds to the time when the threat actor was planning this campaign. Which MITRE ATT&CK sub-technique of the Resource Development tactic corresponds to this activity?
+T1583.001
+Acquire Infrastructure: Domains
+Adversaries may acquire domains that can be used during targeting. Domain names are the human readable names used to represent one or more IP addresses. They can be purchased or, in some cases, acquired for free.
+
+The previously identified domain appears to belong to a company, what is the full URL of the company's page on X (formerly Twitter)?
+https://x.com/Develop_Dreams 
+
+Reading the suspicious email carefully, it appears that the threat actor first contacted the victim using the previously identified social media profile. Which MITRE ATT&CK sub-technique of the Resource Development tactic corresponds to this activity?
+T1585.001
+Establish Accounts: Social Media Accounts
+Adversaries may create and cultivate social media accounts that can be used during targeting. Adversaries can create social media accounts that can be used to build a persona to further operations. Persona development consists of the development of public information, presence, history and appropriate affiliations
+
+What is the name of the game the threat actor would like us to collaborate on?
